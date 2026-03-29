@@ -58,12 +58,16 @@ func (ex *Exchange) houseKeeper() {
 				break
 			}
 			ex.clients[cli.routingKey] = cli
+			clientsCount.Inc()
 			ex.Unlock()
 		case cli := <-ex.unregister:
 			go cli.close()
 
 			ex.Lock()
-			delete(ex.clients, cli.routingKey)
+			if _, ok := ex.clients[cli.routingKey]; ok {
+				delete(ex.clients, cli.routingKey)
+				clientsCount.Dec()
+			}
 			ex.Unlock()
 		}
 	}

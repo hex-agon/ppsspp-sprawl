@@ -158,6 +158,8 @@ func (c *client) reader(exchange *Exchange) {
 				exchange.unregister <- c
 				return
 			}
+			clientsRxBytes.Add(float64(len(packetBuf)))
+
 			targetKey := newRoutingKey(targetMacAddr, targetPort)
 			exchange.routePacket(targetKey, packetBuf)
 		}
@@ -177,6 +179,7 @@ func (c *client) writer() {
 					Str("key", c.routingKey.String()).
 					Msg("writer: failed to write data to the client")
 			}
+			clientsTxBytes.Add(float64(len(payload)))
 		}
 	}
 }

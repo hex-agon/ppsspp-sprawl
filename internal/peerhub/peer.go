@@ -152,7 +152,11 @@ func (p *peer) reader(hub *PeerHub) {
 					Msg("reader: peer has no peer, discarding packet")
 				break
 			}
-			p.peer.txQueue <- packetBuf
+
+			if err := p.peer.write(packetBuf, writePacketTimeout); err != nil {
+				log.Warn().Err(err).Msg("failed to write packet to peer")
+				hub.unregister <- p
+			}
 		}
 	}
 }

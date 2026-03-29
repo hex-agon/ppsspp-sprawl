@@ -40,21 +40,27 @@ func (hub *PeerHub) houseKeeper() {
 			return
 		case p := <-hub.registerListening:
 			hub.listeningPeers[p.key] = p
+			listeningPeersCount.Inc()
 		case p := <-hub.registerConnected:
 			hub.connectedPeers[p.key] = p
+			connectedPeersCount.Inc()
 		case p := <-hub.unregister:
 			switch p.peerType {
 			case peerTypeListening:
 				delete(hub.listeningPeers, p.key)
+				listeningPeersCount.Dec()
 			case peerTypeConnecting:
 				go p.close()
 				delete(hub.connectedPeers, p.key)
+				connectedPeersCount.Dec()
+
 				if p.peer != nil {
 					log.Debug().
 						Str("key", p.peer.key.String()).
 						Msg("closing peer as other was closed")
 					go p.peer.close()
 					delete(hub.connectedPeers, p.key)
+					connectedPeersCount.Dec()
 				}
 			}
 		}
@@ -200,9 +206,13 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 
 	if err := p.write(targetPeerKey.encode(), writePacketTimeout); err != nil {
 		log.Warn().Err(err).Msg("failed to write accept conn packet to peer")
+		hub.unregister <- p
+		return
 	}
 	if err := targetPeer.write(srcPeerKey.encode(), writePacketTimeout); err != nil {
 		log.Warn().Err(err).Msg("failed to write accept conn packet to peer")
+		hub.unregister <- p
+		return
 	}
 
 	log.Info().
