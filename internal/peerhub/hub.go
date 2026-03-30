@@ -10,6 +10,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const listeningPeerTimeout = 30 * time.Second
+
 type PeerHub struct {
 	sync.RWMutex
 	ctx            context.Context
@@ -33,6 +35,18 @@ func NewHub(ctx context.Context) *PeerHub {
 
 	go hub.houseKeeper()
 	return hub
+}
+
+func (hub *PeerHub) findConnectedPeer(key peerKey) *peer {
+	hub.RLock()
+	defer hub.RUnlock()
+	return hub.connectedPeers[key]
+}
+
+func (hub *PeerHub) findListeningPeer(key peerKey) *peer {
+	hub.RLock()
+	defer hub.RUnlock()
+	return hub.listeningPeers[key]
 }
 
 func (hub *PeerHub) houseKeeper() {
@@ -70,7 +84,7 @@ func (hub *PeerHub) houseKeeper() {
 						Msg("closing peer as other was closed")
 					go p.peer.close()
 					hub.Lock()
-					delete(hub.connectedPeers, p.key)
+					delete(hub.connectedPeers, p.peer.key)
 					hub.Unlock()
 					connectedPeersCount.Dec()
 				}
@@ -80,7 +94,7 @@ func (hub *PeerHub) houseKeeper() {
 }
 
 func RegisterListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAddr []byte, port uint16) {
-	ctx, cancelFunc := context.WithCancel(ctx)
+	ctx, cancelFunc := context.WithTimeout(ctx, listeningPeerTimeout)
 	key := newPeerKey(macAddr, port)
 
 	p := &peer{
@@ -122,15 +136,11 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 	srcPeerKey := newPeerKey(srcAddr, srcPort)
 	targetPeerKey := newPeerKey(targetAddr, targetPort)
 
-	// Retry finding the target peer
 	for range maxRetries {
-		hub.RLock()
-		if hub.listeningPeers[targetPeerKey] != nil {
-			targetPeer = hub.listeningPeers[targetPeerKey]
-			hub.RUnlock()
+		targetPeer = hub.findListeningPeer(targetPeerKey)
+		if targetPeer != nil {
 			break
 		}
-		hub.RUnlock()
 		time.Sleep(retryDelay)
 	}
 
@@ -189,9 +199,7 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 	srcPeerKey := newPeerKey(srcAddr, srcPort)
 	targetPeerKey := newPeerKey(targetAddr, targetPort)
 
-	hub.RLock()
-	targetPeer := hub.connectedPeers[targetPeerKey]
-	hub.RUnlock()
+	targetPeer := hub.findConnectedPeer(targetPeerKey)
 
 	if targetPeer == nil {
 		log.Warn().
@@ -199,6 +207,16 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 			Str("src-key", srcPeerKey.String()).
 			Str("target-key", targetPeerKey.String()).
 			Msg("target peer not found to accept connection")
+		go connCloser(conn)
+		return
+	}
+
+	if targetPeer.peer != nil {
+		log.Warn().
+			Str("ip", conn.RemoteAddr().String()).
+			Str("src-key", srcPeerKey.String()).
+			Str("target-key", targetPeerKey.String()).
+			Msg("attempted to hijack peer connection, disconnecting...")
 		go connCloser(conn)
 		return
 	}

@@ -34,6 +34,12 @@ func NewExchange(ctx context.Context) *Exchange {
 	return ex
 }
 
+func (ex *Exchange) findClient(key routingKey) *client {
+	ex.RLock()
+	defer ex.RUnlock()
+	return ex.clients[key]
+}
+
 func (ex *Exchange) houseKeeper() {
 	for {
 		select {
@@ -74,10 +80,7 @@ func (ex *Exchange) houseKeeper() {
 }
 
 func (ex *Exchange) routePacket(key routingKey, payload []byte) {
-	ex.RLock()
-	defer ex.RUnlock()
-
-	if cli, ok := ex.clients[key]; ok {
+	if cli := ex.findClient(key); cli != nil {
 		if err := cli.write(payload, writePacketTimeout); err != nil {
 			log.Warn().
 				Err(err).

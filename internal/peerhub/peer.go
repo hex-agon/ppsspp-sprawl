@@ -104,10 +104,19 @@ func (p *peer) reader(hub *PeerHub) {
 	for {
 		select {
 		case <-p.ctx.Done():
-			log.Debug().
-				Str("ip", p.remoteAddr()).
-				Str("key", p.key.String()).
-				Msg("reader: context cancelled")
+			if p.peerType == peerTypeListening && errors.Is(p.ctx.Err(), context.DeadlineExceeded) {
+				log.Debug().
+					Str("ip", p.remoteAddr()).
+					Str("key", p.key.String()).
+					Msg("reader: no connection attempt made to listening peer, closing connection.")
+
+				hub.unregister <- p
+			} else {
+				log.Debug().
+					Str("ip", p.remoteAddr()).
+					Str("key", p.key.String()).
+					Msg("reader: context cancelled")
+			}
 			return
 		default:
 			if err := p.read(headerBuf); err != nil {
