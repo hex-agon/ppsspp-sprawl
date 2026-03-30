@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/hex"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
 )
 
 type PeerHub struct {
+	sync.RWMutex
 	ctx            context.Context
 	listeningPeers map[peerKey]*peer
 	connectedPeers map[peerKey]*peer
@@ -39,19 +41,27 @@ func (hub *PeerHub) houseKeeper() {
 		case <-hub.ctx.Done():
 			return
 		case p := <-hub.registerListening:
+			hub.Lock()
 			hub.listeningPeers[p.key] = p
+			hub.Unlock()
 			listeningPeersCount.Inc()
 		case p := <-hub.registerConnected:
+			hub.Lock()
 			hub.connectedPeers[p.key] = p
+			hub.Unlock()
 			connectedPeersCount.Inc()
 		case p := <-hub.unregister:
 			switch p.peerType {
 			case peerTypeListening:
+				hub.Lock()
 				delete(hub.listeningPeers, p.key)
+				hub.Unlock()
 				listeningPeersCount.Dec()
 			case peerTypeConnecting:
 				go p.close()
+				hub.Lock()
 				delete(hub.connectedPeers, p.key)
+				hub.Unlock()
 				connectedPeersCount.Dec()
 
 				if p.peer != nil {
@@ -59,7 +69,9 @@ func (hub *PeerHub) houseKeeper() {
 						Str("key", p.peer.key.String()).
 						Msg("closing peer as other was closed")
 					go p.peer.close()
+					hub.Lock()
 					delete(hub.connectedPeers, p.key)
+					hub.Unlock()
 					connectedPeersCount.Dec()
 				}
 			}
@@ -111,11 +123,14 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 	targetPeerKey := newPeerKey(targetAddr, targetPort)
 
 	// Retry finding the target peer
-	for i := 0; i < maxRetries; i++ {
+	for range maxRetries {
+		hub.RLock()
 		if hub.listeningPeers[targetPeerKey] != nil {
 			targetPeer = hub.listeningPeers[targetPeerKey]
+			hub.RUnlock()
 			break
 		}
+		hub.RUnlock()
 		time.Sleep(retryDelay)
 	}
 
@@ -174,7 +189,9 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 	srcPeerKey := newPeerKey(srcAddr, srcPort)
 	targetPeerKey := newPeerKey(targetAddr, targetPort)
 
+	hub.RLock()
 	targetPeer := hub.connectedPeers[targetPeerKey]
+	hub.RUnlock()
 
 	if targetPeer == nil {
 		log.Warn().
