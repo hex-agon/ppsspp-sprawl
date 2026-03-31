@@ -102,6 +102,13 @@ func (p *peer) close() {
 		}
 		p.hub.unregister <- p
 
+		if p.peer != nil {
+			other := p.peer
+			p.peer = nil
+			other.peer = nil
+			go other.close()
+		}
+
 		log.Info().
 			Str("ip", p.remoteAddr()).
 			Msg("peer disconnected")
@@ -207,6 +214,7 @@ func (p *peer) reader() {
 				}
 				p.close()
 			}
+			peersRxBytes.Add(float64(len(packetBuf)))
 		}
 	}
 }
@@ -228,6 +236,7 @@ func (p *peer) writer() {
 					Str("key", p.key.String()).
 					Msg("writer: failed to write data to the client")
 			}
+			peersTxBytes.Add(float64(len(payload)))
 		}
 	}
 }

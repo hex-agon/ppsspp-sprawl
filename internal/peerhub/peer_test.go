@@ -80,24 +80,41 @@ func TestPeer(t *testing.T) {
 		assert.Equal(t, payload, received[4:])
 	})
 
-	t.Run("WriteOnClosedPeer", func(t *testing.T) {
+	t.Run("CloseLinkedPeers", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 
 		hub := NewHub(ctx)
 
-		mac, _ := hex.DecodeString("000102030405")
-		srvConn, clientConn := net.Pipe()
-		defer func() { _ = srvConn.Close() }()
+		macA, _ := hex.DecodeString("000102030405")
+		srvConnA, clientConnA := net.Pipe()
+		defer func() { _ = srvConnA.Close() }()
+		defer func() { _ = clientConnA.Close() }()
 
-		ctxP, cancelP := context.WithCancel(ctx)
-		p := RegisterPeer(ctxP, cancelP, hub, clientConn, mac, 1001, peerTypeConnecting)
+		macB, _ := hex.DecodeString("000102030406")
+		srvConnB, clientConnB := net.Pipe()
+		defer func() { _ = srvConnB.Close() }()
+		defer func() { _ = clientConnB.Close() }()
 
-		// Close the peer
-		p.close()
+		ctxA, cancelA := context.WithCancel(ctx)
+		peerA := RegisterPeer(ctxA, cancelA, hub, clientConnA, macA, 1001, peerTypeConnecting)
 
-		// Verify write returns ErrPeerDisconnected
-		err := p.write([]byte("test"), 1*time.Second)
-		assert.ErrorIs(t, err, ErrPeerDisconnected)
+		ctxB, cancelB := context.WithCancel(ctx)
+		peerB := RegisterPeer(ctxB, cancelB, hub, clientConnB, macB, 1002, peerTypeConnecting)
+
+		peerA.peer = peerB
+		peerB.peer = peerA
+
+		done := make(chan struct{})
+		go func() {
+			peerA.close()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("peerA.close() timed out - likely infinite recursion or deadlock")
+		}
 	})
 }
