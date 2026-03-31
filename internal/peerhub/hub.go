@@ -56,11 +56,27 @@ func (hub *PeerHub) houseKeeper() {
 			return
 		case p := <-hub.registerListening:
 			hub.Lock()
+			if _, ok := hub.listeningPeers[p.key]; ok {
+				log.Warn().
+					Str("ip", p.remoteAddr()).
+					Str("key", p.key.String()).
+					Msg("attempted to register duplicate listening peer")
+				p.close()
+				continue
+			}
 			hub.listeningPeers[p.key] = p
 			hub.Unlock()
 			listeningPeersCount.Inc()
 		case p := <-hub.registerConnected:
 			hub.Lock()
+			if _, ok := hub.connectedPeers[p.key]; ok {
+				log.Warn().
+					Str("ip", p.remoteAddr()).
+					Str("key", p.key.String()).
+					Msg("attempted to register duplicate connected peer")
+				p.close()
+				continue
+			}
 			hub.connectedPeers[p.key] = p
 			hub.Unlock()
 			connectedPeersCount.Inc()
@@ -68,54 +84,32 @@ func (hub *PeerHub) houseKeeper() {
 			switch p.peerType {
 			case peerTypeListening:
 				hub.Lock()
-				delete(hub.listeningPeers, p.key)
+				if _, ok := hub.listeningPeers[p.key]; ok {
+					delete(hub.listeningPeers, p.key)
+					listeningPeersCount.Dec()
+				}
 				hub.Unlock()
-				listeningPeersCount.Dec()
 			case peerTypeConnecting:
-				go p.close()
 				hub.Lock()
-				delete(hub.connectedPeers, p.key)
-				hub.Unlock()
-				connectedPeersCount.Dec()
-
-				if p.peer != nil {
-					log.Debug().
-						Str("key", p.peer.key.String()).
-						Msg("closing peer as other was closed")
-					go p.peer.close()
-					hub.Lock()
-					delete(hub.connectedPeers, p.peer.key)
-					hub.Unlock()
+				if _, ok := hub.connectedPeers[p.key]; ok {
+					delete(hub.connectedPeers, p.key)
 					connectedPeersCount.Dec()
 				}
+				hub.Unlock()
 			}
 		}
 	}
 }
 
-func RegisterListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAddr []byte, port uint16) {
+func HandleListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAddr []byte, port uint16) {
 	ctx, cancelFunc := context.WithTimeout(ctx, listeningPeerTimeout)
-	key := newPeerKey(macAddr, port)
 
-	p := &peer{
-		peerType:  peerTypeListening,
-		macAddr:   [6]byte(macAddr),
-		port:      port,
-		key:       key,
-		conn:      conn,
-		ctx:       ctx,
-		ctxCancel: cancelFunc,
-		txQueue:   make(chan []byte, 16),
-	}
+	p := RegisterPeer(ctx, cancelFunc, hub, conn, macAddr, port, peerTypeListening)
 
 	log.Info().
 		Str("ip", p.remoteAddr()).
 		Str("key", p.key.String()).
 		Msg("registered a new listening peer to the hub")
-
-	hub.registerListening <- p
-	go p.reader(hub)
-	go p.writer()
 }
 
 func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr []byte, srcPort uint16, targetAddr []byte, targetPort uint16) {
@@ -165,20 +159,7 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 
 	ctx, cancelFunc := context.WithCancel(ctx)
 
-	p := &peer{
-		peerType:  peerTypeConnecting,
-		macAddr:   [6]byte(srcAddr),
-		port:      srcPort,
-		key:       srcPeerKey,
-		conn:      conn,
-		ctx:       ctx,
-		ctxCancel: cancelFunc,
-		txQueue:   make(chan []byte, 16),
-	}
-
-	hub.registerConnected <- p
-	go p.reader(hub)
-	go p.writer()
+	p := RegisterPeer(ctx, cancelFunc, hub, conn, srcAddr, srcPort, peerTypeConnecting)
 
 	log.Info().
 		Str("ip", p.remoteAddr()).
@@ -222,22 +203,9 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 	}
 	ctx, cancelFunc := context.WithCancel(ctx)
 
-	p := &peer{
-		peerType:  peerTypeConnecting,
-		macAddr:   [6]byte(srcAddr),
-		port:      srcPort,
-		key:       srcPeerKey,
-		conn:      conn,
-		ctx:       ctx,
-		ctxCancel: cancelFunc,
-		txQueue:   make(chan []byte, 16),
-		peer:      targetPeer,
-	}
+	p := RegisterPeer(ctx, cancelFunc, hub, conn, srcAddr, srcPort, peerTypeConnecting)
+	p.peer = targetPeer
 	targetPeer.peer = p
-
-	hub.registerConnected <- p
-	go p.reader(hub)
-	go p.writer()
 
 	if err := p.write(targetPeerKey.encode(), writePacketTimeout); err != nil {
 		log.Warn().Err(err).Msg("failed to write accept conn packet to peer")

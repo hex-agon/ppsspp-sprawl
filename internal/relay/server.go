@@ -129,7 +129,7 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 	case initTypePdp:
 		exchange.RegisterClient(srv.ctx, srv.exchange, conn, srcAddr, srcPort)
 	case initTypeP2pListen:
-		peerhub.RegisterListeningPeer(srv.ctx, srv.hub, conn, srcAddr, srcPort)
+		peerhub.HandleListeningPeer(srv.ctx, srv.hub, conn, srcAddr, srcPort)
 	case initTypeP2pConnect:
 		peerhub.HandleConnectingPeer(srv.ctx, srv.hub, conn, srcAddr, srcPort, dstAddr, dstPort)
 	case initTypeP2pAccept:

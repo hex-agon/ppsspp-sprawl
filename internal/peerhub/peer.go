@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -22,6 +23,8 @@ type peerType int8
 
 const peerTypeListening peerType = 1
 const peerTypeConnecting peerType = 2
+
+var ErrPeerDisconnected = errors.New("peer disconnected")
 
 type peerKey [8]byte
 
@@ -44,9 +47,11 @@ func (key *peerKey) String() string {
 }
 
 type peer struct {
+	hub       *PeerHub
 	conn      net.Conn
 	ctx       context.Context
 	ctxCancel context.CancelFunc
+	closeOnce sync.Once
 	txQueue   chan []byte
 	macAddr   [6]byte
 	port      uint16
@@ -55,23 +60,52 @@ type peer struct {
 	peer      *peer
 }
 
+func RegisterPeer(ctx context.Context, cancelFunc context.CancelFunc, hub *PeerHub, conn net.Conn, macAddr []byte, port uint16, pType peerType) *peer {
+	p := &peer{
+		hub:       hub,
+		conn:      conn,
+		ctx:       ctx,
+		ctxCancel: cancelFunc,
+		closeOnce: sync.Once{},
+		txQueue:   make(chan []byte, 16),
+		macAddr:   [6]byte(macAddr),
+		port:      port,
+		key:       newPeerKey(macAddr, port),
+		peerType:  pType,
+	}
+
+	if pType == peerTypeListening {
+		hub.registerListening <- p
+	} else {
+		hub.registerConnected <- p
+	}
+
+	go p.reader()
+	go p.writer()
+
+	return p
+}
+
 func (p *peer) remoteAddr() string {
 	return p.conn.RemoteAddr().String()
 }
 
 func (p *peer) close() {
-	p.ctxCancel()
+	p.closeOnce.Do(func() {
+		p.ctxCancel()
 
-	if err := p.conn.Close(); err != nil {
-		log.Warn().
+		if err := p.conn.Close(); err != nil {
+			log.Warn().
+				Str("ip", p.remoteAddr()).
+				Err(err).
+				Msg("failed to close connection")
+		}
+		p.hub.unregister <- p
+
+		log.Info().
 			Str("ip", p.remoteAddr()).
-			Err(err).
-			Msg("failed to close connection")
-	}
-
-	log.Info().
-		Str("ip", p.remoteAddr()).
-		Msg("peer disconnected")
+			Msg("peer disconnected")
+	})
 }
 
 func (p *peer) read(buf []byte) error {
@@ -90,15 +124,20 @@ func (p *peer) readWithTimeout(buf []byte, timeout time.Duration) error {
 }
 
 func (p *peer) write(buf []byte, timeout time.Duration) error {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
+	case <-p.ctx.Done():
+		return ErrPeerDisconnected
 	case p.txQueue <- buf:
 		return nil
-	case <-time.After(timeout):
+	case <-timer.C:
 		return errors.New("tx queue full: timeout exceeded")
 	}
 }
 
-func (p *peer) reader(hub *PeerHub) {
+func (p *peer) reader() {
 	headerBuf := make([]byte, p2pHeaderSize)
 
 	for {
@@ -110,7 +149,7 @@ func (p *peer) reader(hub *PeerHub) {
 					Str("key", p.key.String()).
 					Msg("reader: no connection attempt made to listening peer, closing connection.")
 
-				hub.unregister <- p
+				p.close()
 			} else {
 				log.Debug().
 					Str("ip", p.remoteAddr()).
@@ -127,7 +166,7 @@ func (p *peer) reader(hub *PeerHub) {
 						Str("key", p.key.String()).
 						Msg("reader: client read error")
 				}
-				hub.unregister <- p
+				p.close()
 				return
 			}
 			packetSize := binary.LittleEndian.Uint32(headerBuf[:])
@@ -138,7 +177,7 @@ func (p *peer) reader(hub *PeerHub) {
 					Str("key", p.key.String()).
 					Uint32("packet-size", packetSize).
 					Msg("reader: client packed size exceeds limit")
-				hub.unregister <- p
+				p.close()
 				return
 			}
 			packetBuf := make([]byte, p2pHeaderSize+packetSize)
@@ -150,7 +189,7 @@ func (p *peer) reader(hub *PeerHub) {
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
 					Msg("reader: client read timeout")
-				hub.unregister <- p
+				p.close()
 				return
 			}
 
@@ -163,8 +202,10 @@ func (p *peer) reader(hub *PeerHub) {
 			}
 
 			if err := p.peer.write(packetBuf, writePacketTimeout); err != nil {
-				log.Warn().Err(err).Msg("failed to write packet to peer")
-				hub.unregister <- p
+				if !errors.Is(err, ErrPeerDisconnected) {
+					log.Warn().Err(err).Msg("failed to write packet to peer")
+				}
+				p.close()
 			}
 		}
 	}

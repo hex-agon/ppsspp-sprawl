@@ -29,9 +29,9 @@ func TestHub(t *testing.T) {
 		port := uint16(1001)
 		key := newPeerKey(macAddr, port)
 
-		RegisterListeningPeer(ctx, hub, clientConn, macAddr, port)
+		HandleListeningPeer(ctx, hub, clientConn, macAddr, port)
 
-		assert.Eventually(t, func() bool {
+		require.Eventually(t, func() bool {
 			return hub.findListeningPeer(key) != nil
 		}, 1*time.Second, 10*time.Millisecond, "Listening peer to be registered")
 	})
@@ -49,7 +49,7 @@ func TestHub(t *testing.T) {
 			defer func() { assert.NoError(t, srvConnT.Close()) }()
 			defer func() { assert.NoError(t, clientConnT.Close()) }()
 
-			RegisterListeningPeer(ctx, hub, clientConnT, targetMac, targetPort)
+			HandleListeningPeer(ctx, hub, clientConnT, targetMac, targetPort)
 
 			srcMac, _ := hex.DecodeString("000102030405")
 			srcPort := uint16(1001)
@@ -67,7 +67,7 @@ func TestHub(t *testing.T) {
 			expectedKey := newPeerKey(srcMac, srcPort)
 			assert.Equal(t, expectedKey.encode(), receivedKey, "Received key should match source peer key")
 
-			assert.Eventually(t, func() bool {
+			require.Eventually(t, func() bool {
 				return hub.findConnectedPeer(newPeerKey(srcMac, srcPort)) != nil
 			}, 1*time.Second, 10*time.Millisecond, "Source peer should be registered as connected")
 		})
@@ -89,7 +89,7 @@ func TestHub(t *testing.T) {
 
 			_ = srvConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 			_, err := srvConn.Read([]byte{})
-			assert.ErrorIs(t, err, io.EOF, "Connection should be closed when target not found")
+			assert.ErrorIs(t, err, io.EOF, "Peer connection should be closed when target not found")
 		})
 	})
 
@@ -102,52 +102,42 @@ func TestHub(t *testing.T) {
 
 			targetMac, _ := hex.DecodeString("000102030406")
 			targetPort := uint16(1002)
-			targetKey := newPeerKey(targetMac, targetPort)
-			srvConnT, clientConnT := net.Pipe()
-			defer func() { assert.NoError(t, srvConnT.Close()) }()
+			srvConnTarget, clientConnT := net.Pipe()
+			defer func() { assert.NoError(t, srvConnTarget.Close()) }()
 			defer func() { assert.NoError(t, clientConnT.Close()) }()
 
-			pTarget := &peer{
-				peerType:  peerTypeConnecting,
-				macAddr:   [6]byte(targetMac),
-				port:      targetPort,
-				key:       targetKey,
-				conn:      clientConnT,
-				ctx:       ctx,
-				ctxCancel: func() {},
-				txQueue:   make(chan []byte, 16),
-			}
-			hub.registerConnected <- pTarget
-			go pTarget.writer()
+			targetCtx, targetCancel := context.WithCancel(ctx)
 
-			assert.Eventually(t, func() bool {
-				return hub.findConnectedPeer(targetKey) != nil
-			}, 1*time.Second, 10*time.Millisecond, "Target peer should be registered before accepting")
+			targetPeer := RegisterPeer(targetCtx, targetCancel, hub, clientConnT, targetMac, targetPort, peerTypeConnecting)
+
+			require.Eventually(t, func() bool {
+				return hub.findConnectedPeer(targetPeer.key) != nil
+			}, 1*time.Second, 10*time.Millisecond, "Target peer should be registered")
 
 			srcMac, _ := hex.DecodeString("000102030405")
 			srcPort := uint16(1001)
 			srcKey := newPeerKey(srcMac, srcPort)
-			srvConnS, clientConnS := net.Pipe()
-			defer func() { assert.NoError(t, srvConnS.Close()) }()
-			defer func() { assert.NoError(t, clientConnS.Close()) }()
+			srvConnSrc, clientConnSrc := net.Pipe()
+			defer func() { assert.NoError(t, srvConnSrc.Close()) }()
+			defer func() { assert.NoError(t, clientConnSrc.Close()) }()
 
-			HandleAcceptingPeer(ctx, hub, clientConnS, srcMac, srcPort, targetMac, targetPort)
+			HandleAcceptingPeer(ctx, hub, clientConnSrc, srcMac, srcPort, targetMac, targetPort)
 
 			receivedSrcKey := make([]byte, 10)
-			_ = srvConnT.SetReadDeadline(time.Now().Add(1 * time.Second))
-			_, err := io.ReadFull(srvConnT, receivedSrcKey)
+			_ = srvConnTarget.SetReadDeadline(time.Now().Add(1 * time.Second))
+			_, err := io.ReadFull(srvConnTarget, receivedSrcKey)
 			require.NoError(t, err, "Target peer should receive source peer key")
 			assert.Equal(t, srcKey.encode(), receivedSrcKey)
 
 			receivedTargetKey := make([]byte, 10)
-			_ = srvConnS.SetReadDeadline(time.Now().Add(1 * time.Second))
-			_, err = io.ReadFull(srvConnS, receivedTargetKey)
+			_ = srvConnSrc.SetReadDeadline(time.Now().Add(1 * time.Second))
+			_, err = io.ReadFull(srvConnSrc, receivedTargetKey)
 			require.NoError(t, err, "Source peer should receive target peer key")
-			assert.Equal(t, targetKey.encode(), receivedTargetKey)
+			assert.Equal(t, targetPeer.key.encode(), receivedTargetKey)
 
 			assert.Eventually(t, func() bool {
 				pS := hub.findConnectedPeer(srcKey)
-				pT := hub.findConnectedPeer(targetKey)
+				pT := hub.findConnectedPeer(targetPeer.key)
 				return pS != nil && pT != nil && pS.peer == pT && pT.peer == pS
 			}, 1*time.Second, 10*time.Millisecond, "Expected both peers to be connected and interlinked with each other")
 		})
@@ -210,32 +200,21 @@ func TestHub(t *testing.T) {
 			hub := NewHub(ctx)
 
 			mac, _ := hex.DecodeString("000102030405")
-			port := uint16(1001)
-			key := newPeerKey(mac, port)
 
 			srvConn, clientConn := net.Pipe()
 			defer func() { assert.NoError(t, srvConn.Close()) }()
 
-			p := &peer{
-				peerType:  peerTypeListening,
-				macAddr:   [6]byte(mac),
-				port:      port,
-				key:       key,
-				conn:      clientConn,
-				ctx:       ctx,
-				ctxCancel: func() {},
-			}
+			peerCtx, peerCancelFunc := context.WithCancel(ctx)
+			p := RegisterPeer(peerCtx, peerCancelFunc, hub, clientConn, mac, 1001, peerTypeListening)
 
-			hub.registerListening <- p
-
-			assert.Eventually(t, func() bool {
-				return hub.findListeningPeer(key) != nil
+			require.Eventually(t, func() bool {
+				return hub.findListeningPeer(p.key) != nil
 			}, 1*time.Second, 10*time.Millisecond, "Expected listening peer to be registered")
 
-			hub.unregister <- p
+			p.close()
 
-			assert.Eventually(t, func() bool {
-				return hub.findListeningPeer(key) == nil
+			require.Eventually(t, func() bool {
+				return hub.findListeningPeer(p.key) == nil
 			}, 1*time.Second, 10*time.Millisecond, "Expected listening peer to be unregistered")
 		})
 
@@ -245,56 +224,27 @@ func TestHub(t *testing.T) {
 
 			hub := NewHub(ctx)
 
-			macS, _ := hex.DecodeString("000102030405")
-			keyS := newPeerKey(macS, 1001)
-			srvConnS, clientConnS := net.Pipe()
-			defer func() { assert.NoError(t, srvConnS.Close()) }()
+			mac, _ := hex.DecodeString("000102030405")
+			key := newPeerKey(mac, 1001)
+			srvConn, clientConn := net.Pipe()
+			defer func() { assert.NoError(t, srvConn.Close()) }()
 
-			macT, _ := hex.DecodeString("000102030406")
-			keyT := newPeerKey(macT, 1002)
-			srvConnT, clientConnT := net.Pipe()
-			defer func() { assert.NoError(t, srvConnT.Close()) }()
+			peerCtx, peerCancel := context.WithCancel(ctx)
+			p := RegisterPeer(peerCtx, peerCancel, hub, clientConn, mac, 1001, peerTypeConnecting)
 
-			ctxS, cancelS := context.WithCancel(ctx)
-			pS := &peer{
-				peerType:  peerTypeConnecting,
-				key:       keyS,
-				conn:      clientConnS,
-				ctx:       ctxS,
-				ctxCancel: cancelS,
-			}
-
-			ctxT, cancelT := context.WithCancel(ctx)
-			pT := &peer{
-				peerType:  peerTypeConnecting,
-				key:       keyT,
-				conn:      clientConnT,
-				ctx:       ctxT,
-				ctxCancel: cancelT,
-				peer:      pS,
-			}
-			pS.peer = pT
-
-			hub.registerConnected <- pS
-			hub.registerConnected <- pT
-
-			assert.Eventually(t, func() bool {
-				return hub.findConnectedPeer(keyS) != nil && hub.findConnectedPeer(keyT) != nil
+			require.Eventually(t, func() bool {
+				return hub.findConnectedPeer(key) != nil
 			}, 1*time.Second, 10*time.Millisecond)
 
-			hub.unregister <- pS
+			p.close()
 
-			assert.Eventually(t, func() bool {
-				return hub.findConnectedPeer(keyS) == nil && hub.findConnectedPeer(keyT) == nil
-			}, 1*time.Second, 10*time.Millisecond)
+			require.Eventually(t, func() bool {
+				return hub.findConnectedPeer(key) == nil
+			}, 1*time.Second, 10*time.Millisecond, "Expected peer to be unregistered")
 
-			_ = srvConnS.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-			_, errS := srvConnS.Read([]byte{})
-			assert.ErrorIs(t, errS, io.EOF, "Expected peer connection to be closed")
-
-			_ = srvConnT.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-			_, errT := srvConnT.Read([]byte{})
-			assert.ErrorIs(t, errT, io.EOF, "Expected peer connection to be closed")
+			_ = srvConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			_, err := srvConn.Read([]byte{})
+			require.ErrorIs(t, err, io.EOF, "Expected peer A connection to be closed")
 		})
 	})
 }

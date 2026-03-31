@@ -44,54 +44,25 @@ func TestPeer(t *testing.T) {
 
 		hub := NewHub(ctx)
 
-		// 1. Setup two linked connecting peers
 		macA, _ := hex.DecodeString("000102030405")
-		keyA := newPeerKey(macA, 1001)
 		srvConnA, clientConnA := net.Pipe()
 		defer func() { assert.NoError(t, srvConnA.Close()) }()
 		defer func() { assert.NoError(t, clientConnA.Close()) }()
 
 		macB, _ := hex.DecodeString("000102030406")
-		keyB := newPeerKey(macB, 1002)
 		srvConnB, clientConnB := net.Pipe()
 		defer func() { assert.NoError(t, srvConnB.Close()) }()
 		defer func() { assert.NoError(t, clientConnB.Close()) }()
 
 		ctxA, cancelA := context.WithCancel(ctx)
-		pA := &peer{
-			peerType:  peerTypeConnecting,
-			macAddr:   [6]byte(macA),
-			port:      1001,
-			key:       keyA,
-			conn:      clientConnA,
-			ctx:       ctxA,
-			ctxCancel: cancelA,
-			txQueue:   make(chan []byte, 16),
-		}
+		peerA := RegisterPeer(ctxA, cancelA, hub, clientConnA, macA, 1001, peerTypeConnecting)
 
 		ctxB, cancelB := context.WithCancel(ctx)
-		pB := &peer{
-			peerType:  peerTypeConnecting,
-			macAddr:   [6]byte(macB),
-			port:      1002,
-			key:       keyB,
-			conn:      clientConnB,
-			ctx:       ctxB,
-			ctxCancel: cancelB,
-			txQueue:   make(chan []byte, 16),
-			peer:      pA,
-		}
-		pA.peer = pB
+		peerB := RegisterPeer(ctxB, cancelB, hub, clientConnB, macB, 1002, peerTypeConnecting)
 
-		hub.registerConnected <- pA
-		hub.registerConnected <- pB
+		peerA.peer = peerB
+		peerB.peer = peerA
 
-		go pA.reader(hub)
-		go pA.writer()
-		go pB.reader(hub)
-		go pB.writer()
-
-		// 2. Transfer data from A to B
 		payload := []byte("hello from A")
 		packet := make([]byte, 4+len(payload))
 		binary.LittleEndian.PutUint32(packet[0:4], uint32(len(payload)))
@@ -100,7 +71,6 @@ func TestPeer(t *testing.T) {
 		_, err := srvConnA.Write(packet)
 		require.NoError(t, err)
 
-		// 3. Receive data on B
 		received := make([]byte, 4+len(payload))
 		_ = srvConnB.SetReadDeadline(time.Now().Add(1 * time.Second))
 		_, err = io.ReadFull(srvConnB, received)
@@ -108,5 +78,26 @@ func TestPeer(t *testing.T) {
 
 		assert.Equal(t, uint32(len(payload)), binary.LittleEndian.Uint32(received[0:4]))
 		assert.Equal(t, payload, received[4:])
+	})
+
+	t.Run("WriteOnClosedPeer", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		hub := NewHub(ctx)
+
+		mac, _ := hex.DecodeString("000102030405")
+		srvConn, clientConn := net.Pipe()
+		defer func() { _ = srvConn.Close() }()
+
+		ctxP, cancelP := context.WithCancel(ctx)
+		p := RegisterPeer(ctxP, cancelP, hub, clientConn, mac, 1001, peerTypeConnecting)
+
+		// Close the peer
+		p.close()
+
+		// Verify write returns ErrPeerDisconnected
+		err := p.write([]byte("test"), 1*time.Second)
+		assert.ErrorIs(t, err, ErrPeerDisconnected)
 	})
 }

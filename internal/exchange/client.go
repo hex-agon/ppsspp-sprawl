@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -27,9 +28,11 @@ func (key routingKey) String() string {
 }
 
 type client struct {
+	exchange   *Exchange
 	conn       net.Conn
 	ctx        context.Context
 	ctxCancel  context.CancelFunc
+	closeOnce  sync.Once
 	txQueue    chan []byte
 	macAddr    [6]byte
 	port       uint16
@@ -45,9 +48,11 @@ func RegisterClient(ctx context.Context, exchange *Exchange, conn net.Conn, macA
 	binary.LittleEndian.PutUint16(key[6:], port)
 
 	cli := &client{
+		exchange:   exchange,
 		conn:       conn,
 		ctx:        ctx,
 		ctxCancel:  cancelFunc,
+		closeOnce:  sync.Once{},
 		txQueue:    make(chan []byte, 16),
 		macAddr:    [6]byte(macAddr),
 		port:       port,
@@ -55,7 +60,7 @@ func RegisterClient(ctx context.Context, exchange *Exchange, conn net.Conn, macA
 	}
 
 	exchange.register <- cli
-	go cli.reader(exchange)
+	go cli.reader()
 	go cli.writer()
 
 	log.Info().
@@ -69,19 +74,23 @@ func (c *client) remoteAddr() string {
 }
 
 func (c *client) close() {
-	c.ctxCancel()
+	c.closeOnce.Do(func() {
+		c.ctxCancel()
 
-	if err := c.conn.Close(); err != nil {
-		log.Warn().
+		if err := c.conn.Close(); err != nil {
+			log.Warn().
+				Str("ip", c.remoteAddr()).
+				Str("client-key", c.routingKey.String()).
+				Err(err).
+				Msg("failed to close connection")
+		}
+		c.exchange.unregister <- c
+
+		log.Info().
 			Str("ip", c.remoteAddr()).
 			Str("client-key", c.routingKey.String()).
-			Err(err).
-			Msg("failed to close connection")
-	}
-	log.Info().
-		Str("ip", c.remoteAddr()).
-		Str("client-key", c.routingKey.String()).
-		Msg("client disconnected")
+			Msg("client disconnected")
+	})
 }
 
 func (c *client) read(buf []byte) error {
@@ -108,7 +117,7 @@ func (c *client) write(buf []byte, timeout time.Duration) error {
 	}
 }
 
-func (c *client) reader(exchange *Exchange) {
+func (c *client) reader() {
 	headerBuf := make([]byte, pdpHeaderSize)
 
 	for {
@@ -125,7 +134,7 @@ func (c *client) reader(exchange *Exchange) {
 						Str("key", c.routingKey.String()).
 						Msg("reader: client read error")
 				}
-				exchange.unregister <- c
+				c.close()
 				return
 			}
 			targetMacAddr := headerBuf[:6]
@@ -139,7 +148,7 @@ func (c *client) reader(exchange *Exchange) {
 					Uint32("packet-size", packetSize).
 					Msg("reader: client packed size exceeds limit")
 
-				exchange.unregister <- c
+				c.close()
 				return
 			}
 			packetBuf := make([]byte, pdpHeaderSize+packetSize)
@@ -155,13 +164,13 @@ func (c *client) reader(exchange *Exchange) {
 					Str("key", c.routingKey.String()).
 					Msg("reader: client read timeout")
 
-				exchange.unregister <- c
+				c.close()
 				return
 			}
 			clientsRxBytes.Add(float64(len(packetBuf)))
 
 			targetKey := newRoutingKey(targetMacAddr, targetPort)
-			exchange.routePacket(targetKey, packetBuf)
+			c.exchange.routePacket(targetKey, packetBuf)
 		}
 	}
 }
