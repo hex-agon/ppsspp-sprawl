@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -50,7 +51,8 @@ func (c *client) remoteAddr() string {
 }
 
 func (c *client) remoteAddr4() uint32 {
-	return binary.LittleEndian.Uint32(net.ParseIP(c.remoteAddr()).To4())
+	tcpAddr := c.conn.RemoteAddr().(*net.TCPAddr)
+	return binary.LittleEndian.Uint32(tcpAddr.IP.To4())
 }
 
 func (c *client) close() {
@@ -80,7 +82,7 @@ func (c *client) write(packet any, timeout time.Duration) error {
 	case c.txQueue <- packet:
 		return nil
 	case <-time.After(timeout):
-		return errors.New("tx queue full: timeout exceeded")
+		return fmt.Errorf("tx queue full: timeout exceeded when writing to mac: %s", c.macAddr.String())
 	}
 }
 
@@ -184,15 +186,16 @@ func handleConnectPacket(cli *client, payload []byte) error {
 	if cli.group != nil {
 		return errors.New("connect: already connected to a group")
 	}
-	cli.server.joinGroup(cli, cli.titleId, gid)
 
+	if err := cli.server.joinGroup(cli, cli.titleId, gid); err != nil {
+		return err
+	}
 	packet := s2cConnectBssid{
 		s2cBasePacket: s2cBasePacket{
 			packetTypeId: packetTypeConnectBssid.id,
 		},
 		macAddr: cli.macAddr,
 	}
-
 	if err := cli.write(packet, writePacketTimeout); err != nil {
 		return err
 	}
@@ -217,6 +220,16 @@ func handleDisconnectPacket(cli *client) error {
 	gid := cli.group.id
 
 	cli.group.remove(cli)
+
+	// TODO: there's an edge case where when a client is removed, the packet informs by ip, so if there's more than one client with the same ip address, you have to dc them all and then reconnect them to the group (at a network level)
+	packet := s2cDisconnected{
+		s2cBasePacket: s2cBasePacket{
+			packetTypeId: packetTypeDisconnect.id,
+		},
+		ipAddr: cli.remoteAddr4(),
+	}
+	cli.group.broadcast(&packet)
+
 	cli.group = nil
 
 	log.Info().

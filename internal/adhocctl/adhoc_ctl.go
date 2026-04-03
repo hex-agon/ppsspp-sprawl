@@ -77,7 +77,7 @@ func (srv *ctlServer) houseKeeper() {
 	}
 }
 
-func (srv *ctlServer) joinGroup(cli *client, tid titleId, id groupId) {
+func (srv *ctlServer) joinGroup(cli *client, tid titleId, id groupId) error {
 	srv.Lock()
 	defer srv.Unlock()
 
@@ -88,7 +88,6 @@ func (srv *ctlServer) joinGroup(cli *client, tid titleId, id groupId) {
 			grp = g
 		}
 	}
-
 	// create a new group if it doesn't exist
 	if grp == nil {
 		grp = &group{
@@ -108,8 +107,11 @@ func (srv *ctlServer) joinGroup(cli *client, tid titleId, id groupId) {
 			Str("founder", grp.founderMacAddr.String()).
 			Msg("[ctl] join-group: formed a new group")
 	}
-	grp.add(cli)
+	if err := grp.add(cli); err != nil {
+		return err
+	}
 	cli.group = grp
+	return nil
 }
 
 func (srv *ctlServer) disbandGroup(g *group) {
@@ -138,6 +140,7 @@ func (srv *ctlServer) scanGroups(tid titleId, requester *client) {
 				founderAddr: g.founderMacAddr,
 			}
 
+			log.Debug().Msgf("[ctl] scanGroups: sending group %s (founder: %s) to %s", g.id.String(), g.founderMacAddr.String(), requester.macAddr)
 			if err := requester.write(scanReply, writePacketTimeout); err != nil {
 				requester.close()
 				return

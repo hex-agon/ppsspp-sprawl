@@ -97,6 +97,9 @@ type displayName [displayNameLen]byte
 
 func (d *displayName) String() string {
 	terminator := bytes.IndexByte(d[:], 0)
+	if terminator == -1 {
+		terminator = displayNameLen
+	}
 	return string(d[:terminator])
 }
 
@@ -133,4 +136,16 @@ type s2cScanComplete struct {
 type s2cConnectBssid struct {
 	s2cBasePacket
 	macAddr macAddr
+}
+
+type s2cClientConnected struct {
+	s2cBasePacket
+	displayName displayName
+	macAddr     macAddr
+	ipAddr      uint32
+}
+
+type s2cDisconnected struct {
+	s2cBasePacket
+	ipAddr uint32
 }
