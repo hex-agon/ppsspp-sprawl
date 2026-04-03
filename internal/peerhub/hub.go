@@ -60,7 +60,7 @@ func (hub *PeerHub) houseKeeper() {
 				log.Warn().
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
-					Msg("attempted to register duplicate listening peer")
+					Msg("[relay] attempted to register duplicate listening peer")
 				p.close()
 				continue
 			}
@@ -73,7 +73,7 @@ func (hub *PeerHub) houseKeeper() {
 				log.Warn().
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
-					Msg("attempted to register duplicate connected peer")
+					Msg("[relay] attempted to register duplicate connected peer")
 				p.close()
 				continue
 			}
@@ -109,7 +109,7 @@ func HandleListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAd
 	log.Info().
 		Str("ip", p.remoteAddr()).
 		Str("key", p.key.String()).
-		Msg("registered a new listening peer to the hub")
+		Msg("[relay] registered a new listening peer to the hub")
 }
 
 func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr []byte, srcPort uint16, targetAddr []byte, targetPort uint16) {
@@ -118,9 +118,9 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 			log.Warn().
 				Str("ip", conn.RemoteAddr().String()).
 				Err(err).
-				Msg("failed to close connection")
+				Msg("[relay] failed to close connection")
 		}
-		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("closed connection")
+		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] closed connection")
 	}
 	const maxRetries = 5
 	const retryDelay = 500 * time.Millisecond
@@ -143,7 +143,7 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 			Str("ip", conn.RemoteAddr().String()).
 			Str("src-key", srcPeerKey.String()).
 			Str("target-key", targetPeerKey.String()).
-			Msg("target peer not found after retries")
+			Msg("[relay] target peer not found after retries")
 		go connCloser(conn)
 		return
 	}
@@ -152,9 +152,9 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 		Str("ip", conn.RemoteAddr().String()).
 		Str("src-key", srcPeerKey.String()).
 		Str("target-key", targetPeerKey.String()).
-		Msg("target peer found to connect")
+		Msg("[relay] target peer found to connect")
 
-	log.Debug().Msgf("notifying %v that it should connect to %v on port %d", hex.EncodeToString(targetPeer.macAddr[:]), hex.EncodeToString(srcAddr[:]), srcPort)
+	log.Debug().Msgf("[relay] notifying %v that it should connect to %v on port %d", hex.EncodeToString(targetPeer.macAddr[:]), hex.EncodeToString(srcAddr[:]), srcPort)
 	targetPeer.txQueue <- srcPeerKey.encode()
 
 	ctx, cancelFunc := context.WithCancel(ctx)
@@ -164,7 +164,7 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 	log.Info().
 		Str("ip", p.remoteAddr()).
 		Str("key", p.key.String()).
-		Msg("registered a new connected peer to the hub")
+		Msg("[relay] registered a new connected peer to the hub")
 }
 
 func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr []byte, srcPort uint16, targetAddr []byte, targetPort uint16) {
@@ -173,9 +173,9 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 			log.Warn().
 				Str("ip", conn.RemoteAddr().String()).
 				Err(err).
-				Msg("failed to close connection")
+				Msg("[relay] failed to close connection")
 		}
-		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("closed connection")
+		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] closed connection")
 	}
 	srcPeerKey := newPeerKey(srcAddr, srcPort)
 	targetPeerKey := newPeerKey(targetAddr, targetPort)
@@ -187,7 +187,7 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 			Str("ip", conn.RemoteAddr().String()).
 			Str("src-key", srcPeerKey.String()).
 			Str("target-key", targetPeerKey.String()).
-			Msg("target peer not found to accept connection")
+			Msg("[relay] target peer not found to accept connection")
 		go connCloser(conn)
 		return
 	}
@@ -197,7 +197,7 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 			Str("ip", conn.RemoteAddr().String()).
 			Str("src-key", srcPeerKey.String()).
 			Str("target-key", targetPeerKey.String()).
-			Msg("attempted to hijack peer connection, disconnecting...")
+			Msg("[relay] attempted to hijack peer connection, disconnecting...")
 		go connCloser(conn)
 		return
 	}
@@ -208,12 +208,12 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 	targetPeer.peer = p
 
 	if err := p.write(targetPeerKey.encode(), writePacketTimeout); err != nil {
-		log.Warn().Err(err).Msg("failed to write accept conn packet to peer")
+		log.Warn().Err(err).Msg("[relay] failed to write accept conn packet to peer")
 		hub.unregister <- p
 		return
 	}
 	if err := targetPeer.write(srcPeerKey.encode(), writePacketTimeout); err != nil {
-		log.Warn().Err(err).Msg("failed to write accept conn packet to peer")
+		log.Warn().Err(err).Msg("[relay] failed to write accept conn packet to peer")
 		hub.unregister <- p
 		return
 	}
@@ -222,5 +222,5 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 		Str("ip", conn.RemoteAddr().String()).
 		Str("src-key", srcPeerKey.String()).
 		Str("target-key", targetPeerKey.String()).
-		Msg("peer accepted connection")
+		Msg("[relay] peer accepted connection")
 }

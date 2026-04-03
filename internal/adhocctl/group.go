@@ -50,7 +50,7 @@ func (g *group) broadcast(payload []byte) {
 				Err(err).
 				Str("ip", c.remoteAddr()).
 				Str("mac", c.macAddr.String()).
-				Msg("group broadcast: write to client error")
+				Msg("[ctl] group broadcast: write to client error")
 			c.close()
 		}
 	}

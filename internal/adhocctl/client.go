@@ -61,12 +61,12 @@ func (c *client) close() {
 			log.Warn().
 				Str("ip", c.remoteAddr()).
 				Err(err).
-				Msg("failed to close connection")
+				Msg("[ctl] failed to close connection")
 		}
 
 		log.Info().
 			Str("ip", c.remoteAddr()).
-			Msg("client disconnected")
+			Msg("[ctl] client disconnected")
 	})
 }
 
@@ -99,14 +99,14 @@ func (c *client) reader() {
 					log.Warn().
 						Err(err).
 						Str("ip", c.remoteAddr()).
-						Msg("reader: client read error")
+						Msg("[ctl] reader: client read error")
 				}
 				c.close()
 				return
 			}
 
 			if packetTypeId < 0 || int(packetTypeId) > len(c2sPacketTypes) {
-				log.Warn().Msgf("reader: unknown packet type id: %d", packetTypeId)
+				log.Warn().Msgf("[ctl] reader: unknown packet type id: %d", packetTypeId)
 				c.close()
 				return
 			}
@@ -117,7 +117,7 @@ func (c *client) reader() {
 			}
 
 			if pktType == (packetType{}) {
-				log.Warn().Msgf("reader: unexpected packet type id: %d", packetTypeId)
+				log.Warn().Msgf("[ctl] reader: unexpected packet type id: %d", packetTypeId)
 				c.close()
 				return
 			}
@@ -127,7 +127,7 @@ func (c *client) reader() {
 					log.Warn().
 						Err(err).
 						Str("ip", c.remoteAddr()).
-						Msg("reader: client read error")
+						Msg("[ctl] reader: client read error")
 				}
 				c.close()
 				return
@@ -138,7 +138,7 @@ func (c *client) reader() {
 					Err(err).
 					Str("ip", c.remoteAddr()).
 					Str("mac", c.macAddr.String()).
-					Msg("reader: client handle packet error")
+					Msg("[ctl] reader: client handle packet error")
 				c.close()
 			}
 
@@ -175,7 +175,7 @@ func handleConnectPacket(cli *client, payload []byte) error {
 		Str("ip", cli.remoteAddr()).
 		Str("mac", cli.macAddr.String()).
 		Str("groupId", gid.String()).
-		Msg("connect: handing packet")
+		Msg("[ctl] connect: handing packet")
 
 	if !gid.valid() {
 		return errors.New("connect: invalid group id")
@@ -201,7 +201,7 @@ func handleConnectPacket(cli *client, payload []byte) error {
 		Str("ip", cli.remoteAddr()).
 		Str("mac", cli.macAddr.String()).
 		Str("groupId", gid.String()).
-		Msg("connect: connected client to group")
+		Msg("[ctl] connect: connected client to group")
 	return nil
 }
 
@@ -209,7 +209,7 @@ func handleDisconnectPacket(cli *client) error {
 	log.Debug().
 		Str("ip", cli.remoteAddr()).
 		Str("mac", cli.macAddr.String()).
-		Msg("disconnect: handing packet")
+		Msg("[ctl] disconnect: handing packet")
 
 	if cli.group == nil {
 		return errors.New("disconnect: client is not connected to any group")
@@ -223,7 +223,7 @@ func handleDisconnectPacket(cli *client) error {
 		Str("ip", cli.remoteAddr()).
 		Str("mac", cli.macAddr.String()).
 		Str("groupId", gid.String()).
-		Msg("connect: connected client to group")
+		Msg("[ctl] connect: connected client to group")
 	return nil
 }
 
@@ -239,7 +239,7 @@ func handleScanPacket(cli *client) error {
 		Str("ip", cli.remoteAddr()).
 		Str("mac", cli.macAddr.String()).
 		Str("titleId", cli.titleId.String()).
-		Msg("scan: requested scan")
+		Msg("[ctl] scan: requested scan")
 
 	cli.server.scanGroups(cli.titleId, cli)
 
@@ -254,7 +254,7 @@ func handleChatPacket(cli *client, payload []byte) error {
 	log.Debug().
 		Str("ip", cli.remoteAddr()).
 		Str("mac", cli.macAddr.String()).
-		Msg("chat: handing packet")
+		Msg("[ctl] chat: handing packet")
 
 	return nil
 }
@@ -269,14 +269,14 @@ func (c *client) writer() {
 				Str("ip", c.remoteAddr()).
 				Str("mac", c.macAddr.String()).
 				Any("packet", packet).
-				Msg("writer: writing packet")
+				Msg("[ctl] writer: writing packet")
 
 			if err := binary.Write(c.conn, binary.LittleEndian, packet); err != nil {
 				log.Warn().
 					Err(err).
 					Str("ip", c.remoteAddr()).
 					Str("mac", c.macAddr.String()).
-					Msg("writer: failed to write data to the client")
+					Msg("[ctl] writer: failed to write data to the client")
 			}
 		}
 	}

@@ -106,7 +106,7 @@ func (srv *ctlServer) joinGroup(cli *client, tid titleId, id groupId) {
 		log.Info().
 			Str("groupId", grp.id.String()).
 			Str("founder", grp.founderMacAddr.String()).
-			Msg("join-group: formed a new group")
+			Msg("[ctl] join-group: formed a new group")
 	}
 	grp.add(cli)
 	cli.group = grp
@@ -120,7 +120,7 @@ func (srv *ctlServer) disbandGroup(g *group) {
 		delete(groups, g.id)
 		log.Info().
 			Str("groupId", g.id.String()).
-			Msg("join-group: disbanded group")
+			Msg("[ctl] join-group: disbanded group")
 	}
 }
 
@@ -162,11 +162,11 @@ func (srv *ctlServer) connAcceptor() {
 
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
-				log.Warn().Err(err).Msg("failed to accept connection")
+				log.Warn().Err(err).Msg("[ctl] failed to accept connection")
 			}
 			continue
 		}
-		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("accepted new connection")
+		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[ctl] accepted new connection")
 
 		go srv.waitForLoginPacket(conn)
 	}
@@ -178,9 +178,9 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 			log.Warn().
 				Str("ip", conn.RemoteAddr().String()).
 				Err(err).
-				Msg("failed to close connection")
+				Msg("[ctl] failed to close connection")
 		}
-		log.Debug().Str("ip", conn.RemoteAddr().String()).Msg("init: closed connection")
+		log.Debug().Str("ip", conn.RemoteAddr().String()).Msg("[ctl] init: closed connection")
 	}
 	if err := conn.SetReadDeadline(time.Now().Add(loginPacketTimeout)); err != nil {
 		go connCloser(conn)
@@ -196,7 +196,7 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 	if packetTypeId != packetTypeLogin.id {
 		log.Warn().
 			Str("ip", conn.RemoteAddr().String()).
-			Msgf("init: unexpected packet type during login: %d", packetTypeId)
+			Msgf("[ctl] init: unexpected packet type during login: %d", packetTypeId)
 		go connCloser(conn)
 		return
 	}
@@ -215,7 +215,7 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 	}
 
 	if err := binary.Read(bytes.NewReader(loginBuff), binary.LittleEndian, &loginPacket); err != nil {
-		log.Debug().Err(err).Msg("init: failed to read packet")
+		log.Debug().Err(err).Msg("[ctl] init: failed to read packet")
 		go connCloser(conn)
 		return
 	}
@@ -225,7 +225,7 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 			Any("mac", loginPacket.ClientAddr).
 			Any("name", loginPacket.Name).
 			Any("tid", loginPacket.Tid).
-			Msg("init: invalid login packet")
+			Msg("[ctl] init: invalid login packet")
 		go connCloser(conn)
 		return
 	}
@@ -236,5 +236,5 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		Str("mac", loginPacket.ClientAddr.String()).
 		Str("name", loginPacket.Name.String()).
 		Str("tid", loginPacket.Tid.String()).
-		Msg("client logged in")
+		Msg("[ctl] client logged in")
 }

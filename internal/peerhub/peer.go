@@ -98,7 +98,7 @@ func (p *peer) close() {
 			log.Warn().
 				Str("ip", p.remoteAddr()).
 				Err(err).
-				Msg("failed to close connection")
+				Msg("[relay] failed to close connection")
 		}
 		p.hub.unregister <- p
 
@@ -111,7 +111,7 @@ func (p *peer) close() {
 
 		log.Info().
 			Str("ip", p.remoteAddr()).
-			Msg("peer disconnected")
+			Msg("[relay] peer disconnected")
 	})
 }
 
@@ -154,14 +154,14 @@ func (p *peer) reader() {
 				log.Debug().
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
-					Msg("reader: no connection attempt made to listening peer, closing connection.")
+					Msg("[relay] reader: no connection attempt made to listening peer, closing connection.")
 
 				p.close()
 			} else {
 				log.Debug().
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
-					Msg("reader: context cancelled")
+					Msg("[relay] reader: context cancelled")
 			}
 			return
 		default:
@@ -171,7 +171,7 @@ func (p *peer) reader() {
 						Err(err).
 						Str("ip", p.remoteAddr()).
 						Str("key", p.key.String()).
-						Msg("reader: client read error")
+						Msg("[relay] reader: client read error")
 				}
 				p.close()
 				return
@@ -183,7 +183,7 @@ func (p *peer) reader() {
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
 					Uint32("packet-size", packetSize).
-					Msg("reader: client packed size exceeds limit")
+					Msg("[relay] reader: client packed size exceeds limit")
 				p.close()
 				return
 			}
@@ -195,7 +195,7 @@ func (p *peer) reader() {
 					Err(err).
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
-					Msg("reader: client read timeout")
+					Msg("[relay] reader: client read timeout")
 				p.close()
 				return
 			}
@@ -204,13 +204,13 @@ func (p *peer) reader() {
 				log.Warn().
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
-					Msg("reader: peer has no peer, discarding packet")
+					Msg("[relay] reader: peer has no peer, discarding packet")
 				break
 			}
 
 			if err := p.peer.write(packetBuf, writePacketTimeout); err != nil {
 				if !errors.Is(err, ErrPeerDisconnected) {
-					log.Warn().Err(err).Msg("failed to write packet to peer")
+					log.Warn().Err(err).Msg("[relay] failed to write packet to peer")
 				}
 				p.close()
 			}
@@ -226,7 +226,7 @@ func (p *peer) writer() {
 			log.Debug().
 				Str("ip", p.remoteAddr()).
 				Str("key", p.key.String()).
-				Msg("writer: context cancelled")
+				Msg("[relay] writer: context cancelled")
 			return
 		case payload := <-p.txQueue:
 			if _, err := p.conn.Write(payload); err != nil {
@@ -234,7 +234,7 @@ func (p *peer) writer() {
 					Err(err).
 					Str("ip", p.remoteAddr()).
 					Str("key", p.key.String()).
-					Msg("writer: failed to write data to the client")
+					Msg("[relay] writer: failed to write data to the client")
 			}
 			peersTxBytes.Add(float64(len(payload)))
 		}

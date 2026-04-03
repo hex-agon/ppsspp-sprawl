@@ -47,7 +47,7 @@ func (ex *Exchange) houseKeeper() {
 			return
 		case cli := <-ex.register:
 			if cli.routingKey == (routingKey{}) {
-				log.Warn().Str("ip", cli.remoteAddr()).Msg("client has empty routing key")
+				log.Warn().Str("ip", cli.remoteAddr()).Msg("[relay] client has empty routing key")
 				go cli.close()
 				break
 			}
@@ -57,7 +57,7 @@ func (ex *Exchange) houseKeeper() {
 				log.Warn().
 					Str("ip", cli.remoteAddr()).
 					Str("key", cli.routingKey.String()).
-					Msg("duplicate client registration attempt")
+					Msg("[relay] duplicate client registration attempt")
 
 				go cli.close()
 				ex.Unlock()
@@ -84,7 +84,7 @@ func (ex *Exchange) routePacket(key routingKey, payload []byte) {
 				Err(err).
 				Str("ip", cli.remoteAddr()).
 				Str("key", cli.routingKey.String()).
-				Msg("failed to write packet")
+				Msg("[relay] failed to write packet")
 			ex.unregister <- cli
 		}
 		return

@@ -66,7 +66,7 @@ func RegisterClient(ctx context.Context, exchange *Exchange, conn net.Conn, macA
 	log.Info().
 		Str("ip", cli.remoteAddr()).
 		Str("key", cli.routingKey.String()).
-		Msg("registered a new client to the exchange")
+		Msg("[relay] registered a new client to the exchange")
 }
 
 func (c *client) remoteAddr() string {
@@ -82,14 +82,14 @@ func (c *client) close() {
 				Str("ip", c.remoteAddr()).
 				Str("client-key", c.routingKey.String()).
 				Err(err).
-				Msg("failed to close connection")
+				Msg("[relay] failed to close connection")
 		}
 		c.exchange.unregister <- c
 
 		log.Info().
 			Str("ip", c.remoteAddr()).
 			Str("client-key", c.routingKey.String()).
-			Msg("client disconnected")
+			Msg("[relay] client disconnected")
 	})
 }
 
@@ -132,7 +132,7 @@ func (c *client) reader() {
 						Err(err).
 						Str("ip", c.remoteAddr()).
 						Str("key", c.routingKey.String()).
-						Msg("reader: client read error")
+						Msg("[relay] reader: client read error")
 				}
 				c.close()
 				return
@@ -146,7 +146,7 @@ func (c *client) reader() {
 					Str("ip", c.remoteAddr()).
 					Str("key", c.routingKey.String()).
 					Uint32("packet-size", packetSize).
-					Msg("reader: client packed size exceeds limit")
+					Msg("[relay] reader: client packed size exceeds limit")
 
 				c.close()
 				return
@@ -162,7 +162,7 @@ func (c *client) reader() {
 					Err(err).
 					Str("ip", c.remoteAddr()).
 					Str("key", c.routingKey.String()).
-					Msg("reader: client read timeout")
+					Msg("[relay] reader: client read timeout")
 
 				c.close()
 				return
@@ -186,7 +186,7 @@ func (c *client) writer() {
 					Err(err).
 					Str("ip", c.remoteAddr()).
 					Str("key", c.routingKey.String()).
-					Msg("writer: failed to write data to the client")
+					Msg("[relay] writer: failed to write data to the client")
 			}
 			clientsTxBytes.Add(float64(len(payload)))
 		}
