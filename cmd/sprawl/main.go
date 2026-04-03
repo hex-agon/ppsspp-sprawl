@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sprawl-relay/internal/adhocctl"
 	"sprawl-relay/internal/relay"
 	"syscall"
 	"time"
@@ -17,22 +18,32 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "0.0.0.0", "address to listen on")
-	port := flag.String("port", "27313", "port to listen on")
+	ctlAddr := flag.String("ctl-addr", "0.0.0.0", "address for the ctl server to listen on")
+	ctlPort := flag.String("ctl-port", "27312", "port for the ctl server to listen on")
+	relayAddr := flag.String("relay-addr", "0.0.0.0", "address for the relay server to listen on")
+	relayPort := flag.String("relay-port", "27313", "port for the relay server to listen on")
 	metricsPort := flag.String("metrics-port", "8081", "port to listen on for metrics")
 	flag.Parse()
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
 
-	var rel relay.Server
+	var ctlServer adhocctl.Server
 	var err error
 
 	go func() {
-		if rel, err = relay.NewRelay(*addr, *port); err != nil {
+		if ctlServer, err = adhocctl.NewCtlServer(*ctlAddr, *ctlPort); err != nil {
+			log.Fatal().Err(err).Msg("error while starting ctl server")
+		}
+	}()
+	log.Info().Str("addr", *ctlAddr).Str("port", *ctlPort).Msg("started ctl server successfully")
+	var relayServer relay.Server
+
+	go func() {
+		if relayServer, err = relay.NewRelay(*relayAddr, *relayPort); err != nil {
 			log.Fatal().Err(err).Msg("error while starting relay server")
 		}
 	}()
-	log.Info().Str("addr", *addr).Str("port", *port).Msg("started relay server successfully")
+	log.Info().Str("addr", *relayAddr).Str("port", *relayPort).Msg("started relay server successfully")
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
@@ -61,8 +72,11 @@ func main() {
 		log.Warn().Err(err).Msg("error while shutting down metrics server")
 	}
 
-	if err := rel.Shutdown(); err != nil {
-		log.Warn().Err(err).Msg("error while shutting relay gracefully")
+	if err := ctlServer.Shutdown(); err != nil {
+		log.Warn().Err(err).Msg("error while shutting ctl server gracefully")
+	}
+	if err := relayServer.Shutdown(); err != nil {
+		log.Warn().Err(err).Msg("error while shutting relay server gracefully")
 	}
 	log.Info().Msg("shutdown complete")
 }
