@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sprawl-relay/internal/titledb"
 	"sync"
 	"time"
 
@@ -25,7 +26,7 @@ type ctlServer struct {
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 	listener   net.Listener
-	groups     map[titleId]map[groupId]*group
+	groups     map[titledb.TitleId]map[groupId]*group
 	unregister chan *group
 }
 
@@ -53,7 +54,7 @@ func NewCtlServer(addr string, port string) (Server, error) {
 		listener:   listener,
 		ctx:        ctx,
 		cancelFunc: ctxCancel,
-		groups:     make(map[titleId]map[groupId]*group),
+		groups:     make(map[titledb.TitleId]map[groupId]*group),
 		unregister: make(chan *group, 16),
 	}
 
@@ -77,7 +78,7 @@ func (srv *ctlServer) houseKeeper() {
 	}
 }
 
-func (srv *ctlServer) joinGroup(cli *client, tid titleId, id groupId) error {
+func (srv *ctlServer) joinGroup(cli *client, tid titledb.TitleId, id groupId) error {
 	srv.Lock()
 	defer srv.Unlock()
 
@@ -126,7 +127,7 @@ func (srv *ctlServer) disbandGroup(g *group) {
 	}
 }
 
-func (srv *ctlServer) scanGroups(tid titleId, requester *client) {
+func (srv *ctlServer) scanGroups(tid titledb.TitleId, requester *client) {
 	srv.RLock()
 	defer srv.RUnlock()
 
@@ -140,7 +141,7 @@ func (srv *ctlServer) scanGroups(tid titleId, requester *client) {
 				founderAddr: g.founderMacAddr,
 			}
 
-			log.Debug().Msgf("[ctl] scanGroups: sending group %s (founder: %s) to %s", g.id.String(), g.founderMacAddr.String(), requester.macAddr)
+			log.Debug().Msgf("[ctl] scanGroups: sending group %s (founder: %s) to %s", g.id.String(), g.founderMacAddr.String(), requester.macAddr.String())
 			if err := requester.write(scanReply, writePacketTimeout); err != nil {
 				requester.close()
 				return
@@ -214,7 +215,7 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 	var loginPacket struct {
 		ClientAddr macAddr
 		Name       displayName
-		Tid        titleId
+		Tid        titledb.TitleId
 	}
 
 	if err := binary.Read(bytes.NewReader(loginBuff), binary.LittleEndian, &loginPacket); err != nil {
@@ -223,7 +224,7 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		return
 	}
 
-	if !loginPacket.Name.valid() || !loginPacket.Tid.valid() {
+	if !loginPacket.Name.valid() || !loginPacket.Tid.Valid() {
 		log.Debug().
 			Any("mac", loginPacket.ClientAddr).
 			Any("name", loginPacket.Name).
@@ -232,7 +233,14 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		go connCloser(conn)
 		return
 	}
-	registerClient(srv, conn, loginPacket.ClientAddr, loginPacket.Name, loginPacket.Tid)
+	titleId, replaced := titledb.CompatibleTitleId(loginPacket.Tid)
+
+	if replaced {
+		log.Debug().Msgf("[ctl] init: replaced title id %s with %s", loginPacket.Tid.String(), titleId.String())
+	} else {
+		titleId = loginPacket.Tid
+	}
+	registerClient(srv, conn, loginPacket.ClientAddr, loginPacket.Name, titleId)
 
 	log.Info().
 		Str("ip", conn.RemoteAddr().String()).

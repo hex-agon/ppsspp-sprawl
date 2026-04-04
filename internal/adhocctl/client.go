@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sprawl-relay/internal/titledb"
 	"sync"
 	"time"
 
@@ -21,12 +22,12 @@ type client struct {
 	server    *ctlServer
 	macAddr   macAddr
 	name      displayName
-	titleId   titleId // the titleId the client is playing
-	group     *group  // the group the client is currently in
+	titleId   titledb.TitleId // the titleId the client is playing
+	group     *group          // the group the client is currently in
 	txQueue   chan any
 }
 
-func registerClient(srv *ctlServer, conn net.Conn, mac macAddr, name displayName, tid titleId) *client {
+func registerClient(srv *ctlServer, conn net.Conn, mac macAddr, name displayName, tid titledb.TitleId) *client {
 	ctx, cancelFunc := context.WithCancel(srv.ctx)
 
 	c := &client{
@@ -66,8 +67,14 @@ func (c *client) close() {
 				Msg("[ctl] failed to close connection")
 		}
 
+		if c.group != nil {
+			// Trigger a disconnect broadcast
+			c.group.remove(c)
+			c.group = nil
+		}
 		log.Info().
 			Str("ip", c.remoteAddr()).
+			Str("mac", c.macAddr.String()).
 			Msg("[ctl] client disconnected")
 	})
 }
@@ -220,23 +227,13 @@ func handleDisconnectPacket(cli *client) error {
 	gid := cli.group.id
 
 	cli.group.remove(cli)
-
-	// TODO: there's an edge case where when a client is removed, the packet informs by ip, so if there's more than one client with the same ip address, you have to dc them all and then reconnect them to the group (at a network level)
-	packet := s2cDisconnected{
-		s2cBasePacket: s2cBasePacket{
-			packetTypeId: packetTypeDisconnect.id,
-		},
-		ipAddr: cli.remoteAddr4(),
-	}
-	cli.group.broadcast(&packet)
-
 	cli.group = nil
 
 	log.Info().
 		Str("ip", cli.remoteAddr()).
 		Str("mac", cli.macAddr.String()).
 		Str("groupId", gid.String()).
-		Msg("[ctl] connect: connected client to group")
+		Msg("[ctl] disconnect: disconnected client from group")
 	return nil
 }
 
@@ -278,12 +275,6 @@ func (c *client) writer() {
 		case <-c.ctx.Done():
 			return
 		case packet := <-c.txQueue:
-			log.Debug().
-				Str("ip", c.remoteAddr()).
-				Str("mac", c.macAddr.String()).
-				Any("packet", packet).
-				Msg("[ctl] writer: writing packet")
-
 			if err := binary.Write(c.conn, binary.LittleEndian, packet); err != nil {
 				log.Warn().
 					Err(err).

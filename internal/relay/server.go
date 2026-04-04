@@ -80,7 +80,7 @@ func (srv *relayServer) connAcceptor() {
 			}
 			continue
 		}
-		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("accepted new connection")
+		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] accepted new connection")
 
 		go srv.handleConn(conn)
 	}
@@ -92,7 +92,7 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 			log.Warn().
 				Str("ip", conn.RemoteAddr().String()).
 				Err(err).
-				Msg("failed to close connection")
+				Msg("[relay] failed to close connection")
 		}
 		log.Debug().Str("ip", conn.RemoteAddr().String()).Msg("closed connection")
 	}
@@ -123,7 +123,7 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 		Uint16("src-port", srcPort).
 		Str("dst-addr", hex.EncodeToString(dstAddr[:])).
 		Uint16("dst-port", dstPort).
-		Msg("received init packet")
+		Msg("[relay] received init packet")
 
 	switch initPktType {
 	case initTypePdp:

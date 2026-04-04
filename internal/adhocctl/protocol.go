@@ -45,23 +45,6 @@ func (m *macAddr) String() string {
 	return strings.Join(parts, ":")
 }
 
-const titleIdLen = 9
-
-type titleId [titleIdLen]byte
-
-func (t *titleId) String() string {
-	return string(t[:])
-}
-
-func (t *titleId) valid() bool {
-	for _, char := range t {
-		if !((char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')) {
-			return false
-		}
-	}
-	return true
-}
-
 const groupIdLen = 8
 
 type groupId [groupIdLen]byte
