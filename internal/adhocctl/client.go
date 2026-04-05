@@ -257,15 +257,27 @@ func handleScanPacket(cli *client) error {
 }
 
 func handleChatPacket(cli *client, payload []byte) error {
-	var message = string(payload)
-	_ = message
-	// TODO: Validate characters? This is also a null-terminated string
-
 	log.Debug().
 		Str("ip", cli.remoteAddr()).
 		Str("mac", cli.macAddr.String()).
 		Msg("[ctl] chat: handing packet")
 
+	if cli.group == nil {
+		return errors.New("chat: client is not connected to any group")
+	}
+	// TODO: Validate the message? aemu doesn't
+
+	packet := &s2cChat{
+		basePacket: basePacket{
+			packetTypeId: packetTypeChat.id,
+		},
+		message:     payload,
+		displayName: cli.name,
+	}
+
+	cli.group.broadcast(packet, func(c *client) bool {
+		return c != cli
+	})
 	return nil
 }
 

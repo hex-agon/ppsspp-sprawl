@@ -132,3 +132,9 @@ type s2cDisconnected struct {
 	basePacket
 	ipAddr uint32
 }
+
+type s2cChat struct {
+	basePacket
+	message     []byte
+	displayName displayName
+}

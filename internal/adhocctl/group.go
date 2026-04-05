@@ -97,3 +97,22 @@ func (g *group) remove(c *client) {
 		}
 	}
 }
+
+func (g *group) broadcast(packet any, filter func(*client) bool) {
+	g.Lock()
+	defer g.Unlock()
+
+	for c := range g.clients {
+		if filter(c) {
+			if err := c.write(packet, writePacketTimeout); err != nil {
+				log.Warn().
+					Err(err).
+					Str("mac", c.macAddr.String()).
+					Str("remoteAddr", c.remoteAddr()).
+					Str("groupId", g.id.String()).
+					Msg("[ctl] group broadcast: write to client error")
+				c.close()
+			}
+		}
+	}
+}
