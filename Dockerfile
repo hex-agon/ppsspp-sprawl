@@ -9,16 +9,16 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/sprawl-relay ./cmd/sprawl/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/sprawl ./cmd/sprawl/main.go
 
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
 
-COPY --from=builder /out/sprawl-relay /app/sprawl-relay
+COPY --from=builder /out/sprawl /app/sprawl
 
-EXPOSE 27313 8081
+EXPOSE 27312 27313 8081
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["/app/sprawl-relay"]
+ENTRYPOINT ["/app/sprawl"]
