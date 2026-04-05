@@ -22,7 +22,7 @@ func (g *group) add(c *client) error {
 
 	// TODO: Should probably move this to the client but then we have the problem of having to skip the new client
 	newUserPacket := &s2cClientConnected{
-		s2cBasePacket: s2cBasePacket{
+		basePacket: basePacket{
 			packetTypeId: packetTypeConnect.id,
 		},
 		displayName: c.name,
@@ -40,7 +40,7 @@ func (g *group) add(c *client) error {
 		log.Debug().Msgf("[ctl] group add: Notifying %s about the existing %s client", c.macAddr.String(), other.macAddr.String())
 		// notify the client about the existing client
 		otherUserPacket := &s2cClientConnected{
-			s2cBasePacket: s2cBasePacket{
+			basePacket: basePacket{
 				packetTypeId: packetTypeConnect.id,
 			},
 			displayName: other.name,
@@ -69,7 +69,7 @@ func (g *group) remove(c *client) {
 
 	// If there are still players left in the group, let's notify them that someone disconnected
 	packet := s2cDisconnected{
-		s2cBasePacket: s2cBasePacket{
+		basePacket: basePacket{
 			packetTypeId: packetTypeDisconnect.id,
 		},
 		ipAddr: c.remoteAddr4(),
@@ -94,22 +94,6 @@ func (g *group) remove(c *client) {
 				Msgf("[ctl] group remove: Group founder left, electing %s as the new leader", newLeader.macAddr.String())
 			g.founderMacAddr = newLeader.macAddr
 			break
-		}
-	}
-}
-
-func (g *group) broadcast(packet any) {
-	g.RLock()
-	defer g.RUnlock()
-
-	for c := range g.clients {
-		if err := c.write(packet, writePacketTimeout); err != nil {
-			log.Warn().
-				Err(err).
-				Str("ip", c.remoteAddr()).
-				Str("mac", c.macAddr.String()).
-				Msg("[ctl] group broadcast: write to client error")
-			c.close()
 		}
 	}
 }

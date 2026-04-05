@@ -114,7 +114,7 @@ func (c *client) reader() {
 				return
 			}
 
-			if packetTypeId < 0 || int(packetTypeId) > len(c2sPacketTypes) {
+			if int(packetTypeId) > len(c2sPacketTypes) {
 				log.Warn().Msgf("[ctl] reader: unknown packet type id: %d", packetTypeId)
 				c.close()
 				return
@@ -198,7 +198,7 @@ func handleConnectPacket(cli *client, payload []byte) error {
 		return err
 	}
 	packet := s2cConnectBssid{
-		s2cBasePacket: s2cBasePacket{
+		basePacket: basePacket{
 			packetTypeId: packetTypeConnectBssid.id,
 		},
 		macAddr: cli.macAddr,

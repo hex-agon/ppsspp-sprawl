@@ -134,7 +134,7 @@ func (srv *ctlServer) scanGroups(tid titledb.TitleId, requester *client) {
 	if groups, ok := srv.groups[tid]; ok {
 		for _, g := range groups {
 			scanReply := s2cScanReply{
-				s2cBasePacket: s2cBasePacket{
+				basePacket: basePacket{
 					packetTypeId: packetTypeScan.id,
 				},
 				gid:         g.id,
@@ -150,7 +150,7 @@ func (srv *ctlServer) scanGroups(tid titledb.TitleId, requester *client) {
 		}
 	}
 	scanComplete := s2cScanComplete{
-		s2cBasePacket: s2cBasePacket{
+		basePacket: basePacket{
 			packetTypeId: packetTypeScanComplete.id,
 		},
 	}

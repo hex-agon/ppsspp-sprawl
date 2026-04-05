@@ -66,7 +66,7 @@ func (g *groupId) valid() bool {
 
 	for i := 0; i < length; i++ {
 		char := g[i]
-		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')) {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') {
 			return false
 		}
 	}
@@ -96,39 +96,39 @@ func (d *displayName) valid() bool {
 	for i := 0; i < length; i++ {
 		char := d[i]
 		// TODO: I think there's some special characters that are allowed here too (- and _ comes to mind)
-		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')) {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') {
 			return false
 		}
 	}
 	return true
 }
 
-type s2cBasePacket struct {
+type basePacket struct {
 	packetTypeId uint8
 }
 
 type s2cScanReply struct {
-	s2cBasePacket
+	basePacket
 	gid         groupId
 	founderAddr macAddr
 }
 type s2cScanComplete struct {
-	s2cBasePacket
+	basePacket
 }
 
 type s2cConnectBssid struct {
-	s2cBasePacket
+	basePacket
 	macAddr macAddr
 }
 
 type s2cClientConnected struct {
-	s2cBasePacket
+	basePacket
 	displayName displayName
 	macAddr     macAddr
 	ipAddr      uint32
 }
 
 type s2cDisconnected struct {
-	s2cBasePacket
+	basePacket
 	ipAddr uint32
 }
