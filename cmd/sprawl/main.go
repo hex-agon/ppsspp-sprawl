@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"sprawl-relay/internal/adhocctl"
 	"sprawl-relay/internal/relay"
+	"sprawl-relay/internal/titledb"
+	"sync"
 	"syscall"
 	"time"
 
@@ -16,6 +18,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+func init() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
+}
 
 func main() {
 	ctlAddr := flag.String("ctl-addr", "0.0.0.0", "address for the ctl server to listen on")
@@ -25,39 +31,48 @@ func main() {
 	metricsPort := flag.String("metrics-port", "8081", "port to listen on for metrics")
 	flag.Parse()
 
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
-
 	var ctlServer adhocctl.Server
-	var err error
+	var relayServer relay.Server
+
+	var initWg sync.WaitGroup
+	initWg.Add(2)
 
 	go func() {
+		defer initWg.Done()
+		var err error
 		if ctlServer, err = adhocctl.NewCtlServer(*ctlAddr, *ctlPort); err != nil {
 			log.Fatal().Err(err).Msg("error while starting ctl server")
 		}
+		log.Info().Str("addr", *ctlAddr).Str("port", *ctlPort).Msg("started ctl server successfully")
 	}()
-	log.Info().Str("addr", *ctlAddr).Str("port", *ctlPort).Msg("started ctl server successfully")
-	var relayServer relay.Server
 
 	go func() {
+		defer initWg.Done()
+		var err error
 		if relayServer, err = relay.NewRelay(*relayAddr, *relayPort); err != nil {
 			log.Fatal().Err(err).Msg("error while starting relay server")
 		}
+		log.Info().Str("addr", *relayAddr).Str("port", *relayPort).Msg("started relay server successfully")
 	}()
-	log.Info().Str("addr", *relayAddr).Str("port", *relayPort).Msg("started relay server successfully")
+
+	initWg.Wait()
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/status", adhocctl.StatusHandler(ctlServer))
 	metricsServer := &http.Server{
 		Addr:    "0.0.0.0:" + *metricsPort,
 		Handler: mux,
 	}
 
 	go func() {
-		log.Info().Str("port", *metricsPort).Msg("starting metrics server")
 		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal().Err(err).Msg("error while starting metrics server")
 		}
 	}()
+	log.Info().Str("port", *metricsPort).Msg("started metrics server")
+
+	log.Info().Msgf("Loaded %d titles in the database", len(titledb.Titles))
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
