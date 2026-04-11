@@ -13,7 +13,7 @@ type packetType struct {
 
 var (
 	packetTypePing         = packetType{id: 0, size: 0}
-	packetTypeLogin        = packetType{id: 1, size: 144}
+	packetTypeLogin        = packetType{id: 1, size: 143}
 	packetTypeConnect      = packetType{id: 2, size: 9}
 	packetTypeDisconnect   = packetType{id: 3, size: 0}
 	packetTypeScan         = packetType{id: 4, size: 0}
@@ -77,6 +77,12 @@ const displayNameLen = 128
 
 // displayName is a null-terminated string composed of a-z, A-Z, 0-9 characters with a maximum length of 128 bytes.
 type displayName [displayNameLen]byte
+
+func newDisplayName(string string) displayName {
+	var result displayName
+	copy(result[:], string)
+	return result
+}
 
 func (d *displayName) String() string {
 	terminator := bytes.IndexByte(d[:], 0)

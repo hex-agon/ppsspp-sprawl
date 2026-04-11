@@ -20,7 +20,6 @@ func (g *group) add(c *client) error {
 	g.Lock()
 	defer g.Unlock()
 
-	// TODO: Should probably move this to the client but then we have the problem of having to skip the new client
 	newUserPacket := &s2cClientConnected{
 		basePacket: basePacket{
 			packetTypeId: packetTypeConnect.id,
@@ -74,24 +73,19 @@ func (g *group) remove(c *client) {
 		},
 		ipAddr: c.remoteAddr4(),
 	}
+	// TODO: Fix the edge case where there's multiple people under the same ipv4 addr, need to disconnect all (repeat the message by the count of same ip addr4) and then reconnect them
 
 	// can't use broadcast due to locks
-	for c := range g.clients {
-		if err := c.write(packet, writePacketTimeout); err != nil {
-			log.Warn().
-				Err(err).
-				Str("ip", c.remoteAddr()).
-				Str("mac", c.macAddr.String()).
-				Msg("[ctl] group broadcast: write to client error")
-			c.close()
+	for other := range g.clients {
+		if err := other.write(packet, writePacketTimeout); err != nil {
+			other.logger.Err(err).Msg("[ctl] group broadcast: write to client error")
+			other.close()
 		}
 	}
 
 	if c.macAddr == g.founderMacAddr {
 		for newLeader := range g.clients {
-			log.Debug().
-				Str("groupId", g.id.String()).
-				Msgf("[ctl] group remove: Group founder left, electing %s as the new leader", newLeader.macAddr.String())
+			log.Debug().Str("groupId", g.id.String()).Msgf("[ctl] group remove: Group founder left, electing %s as the new leader", newLeader.macAddr.String())
 			g.founderMacAddr = newLeader.macAddr
 			break
 		}
@@ -105,12 +99,7 @@ func (g *group) broadcast(packet any, filter func(*client) bool) {
 	for c := range g.clients {
 		if filter(c) {
 			if err := c.write(packet, writePacketTimeout); err != nil {
-				log.Warn().
-					Err(err).
-					Str("mac", c.macAddr.String()).
-					Str("remoteAddr", c.remoteAddr()).
-					Str("groupId", g.id.String()).
-					Msg("[ctl] group broadcast: write to client error")
+				c.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
 				c.close()
 			}
 		}

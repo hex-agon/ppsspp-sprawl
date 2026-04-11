@@ -14,7 +14,7 @@ type StatusResponse struct {
 func StatusHandler(srv Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		status := StatusResponse{
-			Titles: srv.GetActiveGroups(),
+			Titles: srv.GetActiveTitles(),
 		}
 
 		w.Header().Set("Content-Type", "application/json")

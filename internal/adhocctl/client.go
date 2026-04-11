@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -25,6 +26,7 @@ type client struct {
 	titleId   titledb.TitleId // the titleId the client is playing
 	group     *group          // the group the client is currently in
 	txQueue   chan any
+	logger    zerolog.Logger
 }
 
 func registerClient(srv *ctlServer, conn net.Conn, mac macAddr, name displayName, tid titledb.TitleId) *client {
@@ -40,6 +42,11 @@ func registerClient(srv *ctlServer, conn net.Conn, mac macAddr, name displayName
 		titleId:   tid,
 		name:      name,
 		txQueue:   make(chan any, 32),
+		logger: log.With().
+			Str("ip", conn.RemoteAddr().String()).
+			Str("mac", mac.String()).
+			Str("name", name.String()).
+			Logger(),
 	}
 
 	go c.reader()
@@ -61,10 +68,7 @@ func (c *client) close() {
 		c.ctxCancel()
 
 		if err := c.conn.Close(); err != nil {
-			log.Warn().
-				Str("ip", c.remoteAddr()).
-				Err(err).
-				Msg("[ctl] failed to close connection")
+			c.logger.Warn().Err(err).Msg("[ctl] failed to close connection")
 		}
 
 		if c.group != nil {
@@ -72,10 +76,7 @@ func (c *client) close() {
 			c.group.remove(c)
 			c.group = nil
 		}
-		log.Info().
-			Str("ip", c.remoteAddr()).
-			Str("mac", c.macAddr.String()).
-			Msg("[ctl] client disconnected")
+		c.logger.Info().Msg("[ctl] client disconnected")
 	})
 }
 
@@ -105,17 +106,14 @@ func (c *client) reader() {
 
 			if err := binary.Read(c.conn, binary.LittleEndian, &packetTypeId); err != nil {
 				if err != io.EOF {
-					log.Warn().
-						Err(err).
-						Str("ip", c.remoteAddr()).
-						Msg("[ctl] reader: client read error")
+					c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
 				}
 				c.close()
 				return
 			}
 
 			if int(packetTypeId) > len(c2sPacketTypes) {
-				log.Warn().Msgf("[ctl] reader: unknown packet type id: %d", packetTypeId)
+				c.logger.Warn().Msgf("[ctl] reader: unknown packet type id: %d", packetTypeId)
 				c.close()
 				return
 			}
@@ -126,28 +124,21 @@ func (c *client) reader() {
 			}
 
 			if pktType == (packetType{}) {
-				log.Warn().Msgf("[ctl] reader: unexpected packet type id: %d", packetTypeId)
+				c.logger.Warn().Msgf("[ctl] reader: unexpected packet type id: %d", packetTypeId)
 				c.close()
 				return
 			}
 
 			if err := c.read(pktBuff[:pktType.size]); err != nil {
 				if err != io.EOF {
-					log.Warn().
-						Err(err).
-						Str("ip", c.remoteAddr()).
-						Msg("[ctl] reader: client read error")
+					c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
 				}
 				c.close()
 				return
 			}
 
 			handlePacketErr := func(err error) {
-				log.Warn().
-					Err(err).
-					Str("ip", c.remoteAddr()).
-					Str("mac", c.macAddr.String()).
-					Msg("[ctl] reader: client handle packet error")
+				c.logger.Warn().Err(err).Msg("[ctl] reader: client handle packet error")
 				c.close()
 			}
 
@@ -177,92 +168,70 @@ func (c *client) reader() {
 	}
 }
 
-func handleConnectPacket(cli *client, payload []byte) error {
+func handleConnectPacket(c *client, payload []byte) error {
 	var gid = groupId(payload)
 
-	log.Debug().
-		Str("ip", cli.remoteAddr()).
-		Str("mac", cli.macAddr.String()).
-		Str("groupId", gid.String()).
-		Msg("[ctl] connect: handing packet")
+	c.logger.Debug().Msg("[ctl] connect: handing packet")
 
 	if !gid.valid() {
-		return errors.New("connect: invalid group id")
+		return errors.New("connect: invalid group id: " + gid.String())
 	}
 
-	if cli.group != nil {
+	if c.group != nil {
 		return errors.New("connect: already connected to a group")
 	}
 
-	if err := cli.server.joinGroup(cli, cli.titleId, gid); err != nil {
+	if err := c.server.joinGroup(c, c.titleId, gid); err != nil {
 		return err
 	}
 	packet := s2cConnectBssid{
 		basePacket: basePacket{
 			packetTypeId: packetTypeConnectBssid.id,
 		},
-		macAddr: cli.macAddr,
+		macAddr: c.macAddr,
 	}
-	if err := cli.write(packet, writePacketTimeout); err != nil {
+	if err := c.write(packet, writePacketTimeout); err != nil {
 		return err
 	}
 
-	log.Info().
-		Str("ip", cli.remoteAddr()).
-		Str("mac", cli.macAddr.String()).
-		Str("groupId", gid.String()).
-		Msg("[ctl] connect: connected client to group")
+	c.logger.Info().Msgf("[ctl] connect: connected client to group %s", gid.String())
 	return nil
 }
 
-func handleDisconnectPacket(cli *client) error {
-	log.Debug().
-		Str("ip", cli.remoteAddr()).
-		Str("mac", cli.macAddr.String()).
-		Msg("[ctl] disconnect: handing packet")
+func handleDisconnectPacket(c *client) error {
+	c.logger.Debug().Msg("[ctl] disconnect: handing packet")
 
-	if cli.group == nil {
+	if c.group == nil {
 		return errors.New("disconnect: client is not connected to any group")
 	}
-	gid := cli.group.id
+	gid := c.group.id
 
-	cli.group.remove(cli)
-	cli.group = nil
+	c.group.remove(c)
+	c.group = nil
 
-	log.Info().
-		Str("ip", cli.remoteAddr()).
-		Str("mac", cli.macAddr.String()).
-		Str("groupId", gid.String()).
-		Msg("[ctl] disconnect: disconnected client from group")
+	c.logger.Info().Msgf("[ctl] disconnect: disconnected client from group %s", gid.String())
 	return nil
 }
 
-func handleScanPacket(cli *client) error {
-	if cli.group != nil {
+func handleScanPacket(c *client) error {
+	if c.group != nil {
 		return errors.New("scan: client tried to scan while already connected to a group")
 	}
 	// finds all the available groups for the game and then reply with repeat([name] [founderMacAddr])
 	// then send scan_complete packet
 	// send scan complete
 
-	log.Info().
-		Str("ip", cli.remoteAddr()).
-		Str("mac", cli.macAddr.String()).
-		Str("titleId", cli.titleId.String()).
-		Msg("[ctl] scan: requested scan")
+	c.logger.Info().Msgf("[ctl] scan: requested scan for tileId=%s", c.titleId.String())
 
-	cli.server.scanGroups(cli.titleId, cli)
+	c.server.scanGroups(c.titleId, c)
 
 	return nil
 }
 
-func handleChatPacket(cli *client, payload []byte) error {
-	log.Debug().
-		Str("ip", cli.remoteAddr()).
-		Str("mac", cli.macAddr.String()).
-		Msg("[ctl] chat: handing packet")
+func handleChatPacket(c *client, payload []byte) error {
+	c.logger.Debug().Msg("[ctl] chat: handing packet")
 
-	if cli.group == nil {
+	if c.group == nil {
 		return errors.New("chat: client is not connected to any group")
 	}
 	// TODO: Validate the message? aemu doesn't
@@ -272,11 +241,11 @@ func handleChatPacket(cli *client, payload []byte) error {
 			packetTypeId: packetTypeChat.id,
 		},
 		message:     payload,
-		displayName: cli.name,
+		displayName: c.name,
 	}
 
-	cli.group.broadcast(packet, func(c *client) bool {
-		return c != cli
+	c.group.broadcast(packet, func(other *client) bool {
+		return c != other
 	})
 	return nil
 }
@@ -288,11 +257,7 @@ func (c *client) writer() {
 			return
 		case packet := <-c.txQueue:
 			if err := binary.Write(c.conn, binary.LittleEndian, packet); err != nil {
-				log.Warn().
-					Err(err).
-					Str("ip", c.remoteAddr()).
-					Str("mac", c.macAddr.String()).
-					Msg("[ctl] writer: failed to write data to the client")
+				c.logger.Warn().Err(err).Msg("[ctl] writer: failed to write data to the client")
 			}
 		}
 	}

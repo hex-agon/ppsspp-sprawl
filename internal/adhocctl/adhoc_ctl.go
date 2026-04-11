@@ -32,7 +32,8 @@ type TitleStatus struct {
 
 type Server interface {
 	Shutdown() error
-	GetActiveGroups() []TitleStatus
+	Addr() net.Addr
+	GetActiveTitles() []TitleStatus
 }
 type ctlServer struct {
 	sync.RWMutex
@@ -43,7 +44,16 @@ type ctlServer struct {
 	unregister chan *group
 }
 
-func (srv *ctlServer) GetActiveGroups() []TitleStatus {
+func (srv *ctlServer) Shutdown() error {
+	srv.cancelFunc()
+	return srv.listener.Close()
+}
+
+func (srv *ctlServer) Addr() net.Addr {
+	return srv.listener.Addr()
+}
+
+func (srv *ctlServer) GetActiveTitles() []TitleStatus {
 	srv.RLock()
 	defer srv.RUnlock()
 
@@ -82,11 +92,6 @@ func (srv *ctlServer) GetActiveGroups() []TitleStatus {
 	return result
 }
 
-func (srv *ctlServer) Shutdown() error {
-	srv.cancelFunc()
-	return srv.listener.Close()
-}
-
 func NewCtlServer(addr string, port string) (Server, error) {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
@@ -111,23 +116,7 @@ func NewCtlServer(addr string, port string) (Server, error) {
 	}
 
 	go srv.connAcceptor()
-	go srv.houseKeeper()
 	return srv, nil
-}
-
-func (srv *ctlServer) houseKeeper() {
-	for {
-		select {
-		case <-srv.ctx.Done():
-			return
-		case g := <-srv.unregister:
-			srv.Lock()
-			if groups, ok := srv.groups[g.tid]; ok {
-				delete(groups, g.id)
-			}
-			srv.Unlock()
-		}
-	}
 }
 
 func (srv *ctlServer) joinGroup(cli *client, tid titledb.TitleId, id groupId) error {
@@ -239,13 +228,13 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		log.Debug().Str("ip", conn.RemoteAddr().String()).Msg("[ctl] init: closed connection")
 	}
 	if err := conn.SetReadDeadline(time.Now().Add(loginPacketTimeout)); err != nil {
-		go connCloser(conn)
+		connCloser(conn)
 		return
 	}
 	var packetTypeId uint8
 
 	if err := binary.Read(conn, binary.LittleEndian, &packetTypeId); err != nil {
-		go connCloser(conn)
+		connCloser(conn)
 		return
 	}
 
@@ -253,13 +242,13 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		log.Warn().
 			Str("ip", conn.RemoteAddr().String()).
 			Msgf("[ctl] init: unexpected packet type during login: %d", packetTypeId)
-		go connCloser(conn)
+		connCloser(conn)
 		return
 	}
 	loginBuff := make([]byte, packetTypeLogin.size)
 
 	if _, err := io.ReadFull(conn, loginBuff); err != nil {
-		go connCloser(conn)
+		connCloser(conn)
 		return
 	}
 	_ = conn.SetReadDeadline(time.Time{})
@@ -272,17 +261,17 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 
 	if err := binary.Read(bytes.NewReader(loginBuff), binary.LittleEndian, &loginPacket); err != nil {
 		log.Debug().Err(err).Msg("[ctl] init: failed to read packet")
-		go connCloser(conn)
+		connCloser(conn)
 		return
 	}
 
 	if !loginPacket.Name.valid() || !loginPacket.Tid.Valid() {
-		log.Debug().
-			Any("mac", loginPacket.ClientAddr).
-			Any("name", loginPacket.Name).
-			Any("tid", loginPacket.Tid).
+		log.Warn().
+			Str("mac", loginPacket.ClientAddr.String()).
+			Str("name", loginPacket.Name.String()).
+			Str("tid", loginPacket.Tid.String()).
 			Msg("[ctl] init: invalid login packet")
-		go connCloser(conn)
+		connCloser(conn)
 		return
 	}
 	titleId, replaced := titledb.CompatibleTitleId(loginPacket.Tid)
