@@ -1,7 +1,7 @@
 package adhocctl
 
 import (
-	"sprawl-relay/internal/titledb"
+	"sprawl/internal/titledb"
 	"sync"
 
 	"github.com/rs/zerolog/log"

@@ -7,8 +7,8 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sprawl-relay/internal/exchange"
-	"sprawl-relay/internal/peerhub"
+	"sprawl/internal/exchange"
+	"sprawl/internal/peerhub"
 	"time"
 
 	"github.com/rs/zerolog/log"

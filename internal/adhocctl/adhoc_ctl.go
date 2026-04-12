@@ -7,7 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sprawl-relay/internal/titledb"
+	"sprawl/internal/titledb"
 	"sync"
 	"time"
 

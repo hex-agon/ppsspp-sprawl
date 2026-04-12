@@ -1,4 +1,4 @@
-module sprawl-relay
+module sprawl
 
 go 1.26
 
