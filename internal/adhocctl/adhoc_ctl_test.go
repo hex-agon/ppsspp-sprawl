@@ -6,7 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
-	"sprawl-relay/internal/titledb"
+	"sprawl/internal/titledb"
 	"testing"
 	"time"
 

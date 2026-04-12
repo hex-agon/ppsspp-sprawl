@@ -28,10 +28,6 @@ type client struct {
 	logger    zerolog.Logger
 }
 
-func (c *client) remoteAddr() string {
-	return c.conn.RemoteAddr().String()
-}
-
 func (c *client) remoteAddr4() uint32 {
 	tcpAddr := c.conn.RemoteAddr().(*net.TCPAddr)
 	return binary.LittleEndian.Uint32(tcpAddr.IP.To4())
