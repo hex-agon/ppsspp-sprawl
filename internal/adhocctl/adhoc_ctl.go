@@ -168,36 +168,14 @@ func (srv *ctlServer) disbandGroup(g *group) {
 	}
 }
 
-func (srv *ctlServer) scanGroups(tid titledb.TitleId, requester *client) {
+func (srv *ctlServer) scanGroups(tid titledb.TitleId, consumer func(*group)) {
 	srv.RLock()
 	defer srv.RUnlock()
 
 	if groups, ok := srv.groups[tid]; ok {
 		for _, g := range groups {
-			scanReply := s2cScanReply{
-				basePacket: basePacket{
-					packetTypeId: packetTypeScan.id,
-				},
-				gid:         g.id,
-				founderAddr: g.founderMacAddr,
-			}
-
-			log.Debug().Msgf("[ctl] scanGroups: sending group %s (founder: %s) to %s", g.id.String(), g.founderMacAddr.String(), requester.macAddr.String())
-			if err := requester.write(scanReply, writePacketTimeout); err != nil {
-				requester.close()
-				return
-			}
-
+			consumer(g)
 		}
-	}
-	scanComplete := s2cScanComplete{
-		basePacket: basePacket{
-			packetTypeId: packetTypeScanComplete.id,
-		},
-	}
-	if err := requester.write(scanComplete, writePacketTimeout); err != nil {
-		requester.close()
-		return
 	}
 }
 
@@ -220,10 +198,7 @@ func (srv *ctlServer) connAcceptor() {
 func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 	connCloser := func(conn net.Conn) {
 		if err := conn.Close(); err != nil {
-			log.Warn().
-				Str("ip", conn.RemoteAddr().String()).
-				Err(err).
-				Msg("[ctl] failed to close connection")
+			log.Warn().Err(err).Str("ip", conn.RemoteAddr().String()).Msg("[ctl] failed to close connection")
 		}
 		log.Debug().Str("ip", conn.RemoteAddr().String()).Msg("[ctl] init: closed connection")
 	}

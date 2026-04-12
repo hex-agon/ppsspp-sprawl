@@ -184,6 +184,43 @@ func handleConnectPacket(c *client, payload []byte) error {
 	if err := c.server.joinGroup(c, c.titleId, gid); err != nil {
 		return err
 	}
+
+	// Synchronize group members
+	newClientPacket := &s2cClientConnected{
+		basePacket: basePacket{
+			packetTypeId: packetTypeConnect.id,
+		},
+		displayName: c.name,
+		macAddr:     c.macAddr,
+		ipAddr:      c.remoteAddr4(),
+	}
+	c.group.forEach(func(other *client) {
+		if other == c {
+			return
+		}
+		// Notify other about the new group member
+		if err := other.write(newClientPacket, writePacketTimeout); err != nil {
+			other.logger.Warn().Err(err).Msg("[ctl] client: write error")
+			other.close()
+		}
+
+		// Notify the new client about other group members
+		otherClientPacket := &s2cClientConnected{
+			basePacket: basePacket{
+				packetTypeId: packetTypeConnect.id,
+			},
+			displayName: other.name,
+			macAddr:     other.macAddr,
+			ipAddr:      other.remoteAddr4(),
+		}
+
+		if err := c.write(otherClientPacket, writePacketTimeout); err != nil {
+			c.logger.Warn().Err(err).Msg("[ctl] client: write error")
+			c.close()
+		}
+	})
+
+	//
 	packet := s2cConnectBssid{
 		basePacket: basePacket{
 			packetTypeId: packetTypeConnectBssid.id,
@@ -201,13 +238,24 @@ func handleConnectPacket(c *client, payload []byte) error {
 func handleDisconnectPacket(c *client) error {
 	c.logger.Debug().Msg("[ctl] disconnect: handing packet")
 
-	if c.group == nil {
+	g := c.group
+	if g == nil {
 		return errors.New("disconnect: client is not connected to any group")
 	}
-	gid := c.group.id
+	gid := g.id
 
-	c.group.remove(c)
+	g.remove(c)
 	c.group = nil
+
+	packet := &s2cDisconnected{
+		basePacket: basePacket{
+			packetTypeId: packetTypeDisconnect.id,
+		},
+		ipAddr: c.remoteAddr4(),
+	}
+
+	// TODO: Fix the edge case where there's multiple people under the same ipv4 addr, need to disconnect all (repeat the message by the count of same ip addr4) and then reconnect them
+	g.broadcastAll(packet)
 
 	c.logger.Info().Msgf("[ctl] disconnect: disconnected client from group %s", gid.String())
 	return nil
@@ -223,8 +271,24 @@ func handleScanPacket(c *client) error {
 
 	c.logger.Info().Msgf("[ctl] scan: requested scan for tileId=%s", c.titleId.String())
 
-	c.server.scanGroups(c.titleId, c)
+	c.server.scanGroups(c.titleId, func(g *group) {
+		scanReply := s2cScanReply{
+			basePacket: basePacket{
+				packetTypeId: packetTypeScan.id,
+			},
+			gid:         g.id,
+			founderAddr: g.founderMacAddr,
+		}
 
+		if err := c.write(scanReply, writePacketTimeout); err != nil {
+			c.logger.Warn().Err(err).Msg("[ctl] client: write error")
+			c.close()
+		}
+	})
+
+	if err := c.write(s2cScanComplete{basePacket: basePacket{packetTypeId: packetTypeScanComplete.id}}, writePacketTimeout); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -244,9 +308,7 @@ func handleChatPacket(c *client, payload []byte) error {
 		displayName: c.name,
 	}
 
-	c.group.broadcast(packet, func(other *client) bool {
-		return c != other
-	})
+	c.group.broadcast(packet, func(other *client) bool { return c != other })
 	return nil
 }
 
