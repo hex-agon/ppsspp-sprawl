@@ -37,11 +37,40 @@ type Server interface {
 }
 type ctlServer struct {
 	sync.RWMutex
-	ctx        context.Context
-	cancelFunc context.CancelFunc
-	listener   net.Listener
-	groups     map[titledb.TitleId]map[groupId]*group
-	unregister chan *group
+	ctx              context.Context
+	cancelFunc       context.CancelFunc
+	listener         net.Listener
+	clients          map[macAddr]*client
+	groups           map[titledb.TitleId]map[groupId]*group
+	unregisterClient chan *client
+}
+
+func NewCtlServer(addr string, port string) (Server, error) {
+	ctx, ctxCancel := context.WithCancel(context.Background())
+
+	listenConfig := net.ListenConfig{
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable: true,
+		},
+	}
+	listener, err := listenConfig.Listen(ctx, "tcp", addr+":"+port)
+
+	if err != nil {
+		ctxCancel()
+		return nil, err
+	}
+
+	srv := &ctlServer{
+		listener:         listener,
+		ctx:              ctx,
+		cancelFunc:       ctxCancel,
+		groups:           make(map[titledb.TitleId]map[groupId]*group),
+		unregisterClient: make(chan *client, 16),
+	}
+
+	go srv.connAcceptor()
+	go srv.houseKeeper()
+	return srv, nil
 }
 
 func (srv *ctlServer) Shutdown() error {
@@ -92,31 +121,20 @@ func (srv *ctlServer) GetActiveTitles() []TitleStatus {
 	return result
 }
 
-func NewCtlServer(addr string, port string) (Server, error) {
-	ctx, ctxCancel := context.WithCancel(context.Background())
-
-	listenConfig := net.ListenConfig{
-		KeepAliveConfig: net.KeepAliveConfig{
-			Enable: true,
-		},
+func (srv *ctlServer) houseKeeper() {
+	for {
+		select {
+		case <-srv.ctx.Done():
+			return
+		case cli := <-srv.unregisterClient:
+			srv.Lock()
+			if _, ok := srv.clients[cli.macAddr]; ok {
+				delete(srv.clients, cli.macAddr)
+				clientsCount.Dec()
+			}
+			srv.Unlock()
+		}
 	}
-	listener, err := listenConfig.Listen(ctx, "tcp", addr+":"+port)
-
-	if err != nil {
-		ctxCancel()
-		return nil, err
-	}
-
-	srv := &ctlServer{
-		listener:   listener,
-		ctx:        ctx,
-		cancelFunc: ctxCancel,
-		groups:     make(map[titledb.TitleId]map[groupId]*group),
-		unregister: make(chan *group, 16),
-	}
-
-	go srv.connAcceptor()
-	return srv, nil
 }
 
 func (srv *ctlServer) joinGroup(cli *client, tid titledb.TitleId, id groupId) error {
@@ -184,9 +202,10 @@ func (srv *ctlServer) connAcceptor() {
 		conn, err := srv.listener.Accept()
 
 		if err != nil {
-			if !errors.Is(err, net.ErrClosed) {
-				log.Warn().Err(err).Msg("[ctl] failed to accept connection")
+			if errors.Is(err, net.ErrClosed) {
+				return
 			}
+			log.Warn().Err(err).Msg("[ctl] failed to accept connection")
 			continue
 		}
 		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[ctl] accepted new connection")
@@ -256,7 +275,7 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 	} else {
 		titleId = loginPacket.Tid
 	}
-	registerClient(srv, conn, loginPacket.ClientAddr, loginPacket.Name, titleId)
+	srv.registerClient(conn, loginPacket.ClientAddr, loginPacket.Name, titleId)
 
 	log.Info().
 		Str("ip", conn.RemoteAddr().String()).
@@ -264,4 +283,34 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		Str("name", loginPacket.Name.String()).
 		Str("tid", loginPacket.Tid.String()).
 		Msg("[ctl] client logged in")
+}
+
+func (srv *ctlServer) registerClient(conn net.Conn, mac macAddr, name displayName, tid titledb.TitleId) {
+	srv.Lock()
+	defer srv.Unlock()
+
+	ctx, cancelFunc := context.WithCancel(srv.ctx)
+
+	c := &client{
+		conn:      conn,
+		ctx:       ctx,
+		ctxCancel: cancelFunc,
+		closeOnce: sync.Once{},
+		macAddr:   mac,
+		server:    srv,
+		titleId:   tid,
+		name:      name,
+		txQueue:   make(chan any, 32),
+		logger: log.With().
+			Str("ip", conn.RemoteAddr().String()).
+			Str("mac", mac.String()).
+			Str("name", name.String()).
+			Logger(),
+	}
+
+	srv.clients[mac] = c
+	clientsCount.Inc()
+
+	go c.reader()
+	go c.writer()
 }

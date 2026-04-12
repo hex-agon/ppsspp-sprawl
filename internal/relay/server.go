@@ -75,9 +75,10 @@ func (srv *relayServer) connAcceptor() {
 		conn, err := srv.listener.Accept()
 
 		if err != nil {
-			if !errors.Is(err, net.ErrClosed) {
-				log.Warn().Err(err).Msg("failed to accept connection")
+			if errors.Is(err, net.ErrClosed) {
+				return
 			}
+			log.Warn().Err(err).Msg("[relay] failed to accept connection")
 			continue
 		}
 		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] accepted new connection")

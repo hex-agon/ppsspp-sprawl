@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type client struct {
@@ -27,31 +26,6 @@ type client struct {
 	group     *group          // the group the client is currently in
 	txQueue   chan any
 	logger    zerolog.Logger
-}
-
-func registerClient(srv *ctlServer, conn net.Conn, mac macAddr, name displayName, tid titledb.TitleId) *client {
-	ctx, cancelFunc := context.WithCancel(srv.ctx)
-
-	c := &client{
-		conn:      conn,
-		ctx:       ctx,
-		ctxCancel: cancelFunc,
-		closeOnce: sync.Once{},
-		macAddr:   mac,
-		server:    srv,
-		titleId:   tid,
-		name:      name,
-		txQueue:   make(chan any, 32),
-		logger: log.With().
-			Str("ip", conn.RemoteAddr().String()).
-			Str("mac", mac.String()).
-			Str("name", name.String()).
-			Logger(),
-	}
-
-	go c.reader()
-	go c.writer()
-	return c
 }
 
 func (c *client) remoteAddr() string {
@@ -70,6 +44,8 @@ func (c *client) close() {
 		if err := c.conn.Close(); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] failed to close connection")
 		}
+
+		c.server.unregisterClient <- c
 
 		if c.group != nil {
 			// Trigger a disconnect broadcast
