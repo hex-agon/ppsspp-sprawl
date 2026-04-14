@@ -28,6 +28,7 @@ type TitleStatus struct {
 	TitleRegion string        `json:"title_region"`
 	Name        string        `json:"name"`
 	Groups      []GroupStatus `json:"groups"`
+	PlayerCount int           `json:"player_count,omitzero"`
 }
 
 type Server interface {
@@ -114,6 +115,7 @@ func (srv *ctlServer) GetActiveTitles() []TitleStatus {
 				groupStatus.Players = append(groupStatus.Players, c.name.String())
 			}
 			g.RUnlock()
+			titleStatus.PlayerCount += len(groupStatus.Players)
 			titleStatus.Groups = append(titleStatus.Groups, groupStatus)
 		}
 		result = append(result, titleStatus)

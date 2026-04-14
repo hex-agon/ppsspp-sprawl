@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Sprawl Status</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                background-color: #121212;
+                color: #e0e0e0;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 20px;
+            }
+
+            h1 {
+                color: #ffffff;
+                margin-bottom: 5px;
+            }
+
+            .summary {
+                margin-bottom: 20px;
+                color: #b0b0b0;
+            }
+
+            .title-list-container {
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 15px;
+            }
+
+            .title-card {
+                flex-basis: calc(33.333% - 15px);
+                flex-grow: 1;
+                max-width: calc(33.333% - 8px);
+                min-width: 300px;
+                background-color: #1e1e1e;
+                border: 1px solid #333333;
+                transition: background-color 0.2s;
+                height: fit-content;
+                cursor: pointer;
+            }
+
+            .title-card:hover {
+                background-color: #252525;
+            }
+
+            .title-header {
+                display: flex;
+                gap: 15px;
+                align-items: flex-start;
+                padding: 15px;
+            }
+
+            .title-image {
+                width: 144px;
+                height: 80px;
+                background-color: #333333;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                color: #666666;
+                font-size: 12px;
+                border: 1px solid #444444;
+                background-size: cover;
+                background-position: center;
+            }
+
+            .title-info {
+                flex-grow: 1;
+            }
+
+            .title-name {
+                font-size: 1.2rem;
+                font-weight: bold;
+                color: #ffffff;
+                margin: 0;
+            }
+
+            .title-meta {
+                font-size: 0.9rem;
+                color: #aaaaaa;
+                margin-top: 4px;
+            }
+
+            .title-card.open .groups-overlay {
+                display: flex;
+            }
+
+            .groups-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.85);
+                z-index: 1000;
+                display: none;
+                justify-content: center;
+                align-items: center;
+                cursor: default;
+            }
+
+            .overlay-content {
+                background-color: #1e1e1e;
+                border: 1px solid #333333;
+                width: 90%;
+                max-width: 800px;
+                max-height: 90vh;
+                overflow-y: auto;
+                position: relative;
+                padding: 20px;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            }
+
+            .close-button {
+                position: absolute;
+                top: 15px;
+                right: 20px;
+                font-size: 24px;
+                color: #aaaaaa;
+                cursor: pointer;
+                transition: color 0.2s;
+                line-height: 1;
+            }
+
+            .close-button:hover {
+                color: #ffffff;
+            }
+
+            .groups-list {
+                margin: 0;
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 15px;
+            }
+
+            .group-item {
+                flex-basis: calc(50% - 7.5px);
+                max-width: calc(50% - 7.5px);
+                min-width: 200px;
+                background-color: #2a2a2a;
+                padding: 10px;
+                border-left: 3px solid #007acc;
+            }
+
+            .group-id {
+                font-weight: bold;
+                margin-bottom: 5px;
+                font-size: 0.9rem;
+                color: #00aaff;
+            }
+
+            .player-list {
+                margin: 0;
+                padding-left: 20px;
+                font-size: 0.85rem;
+                color: #cccccc;
+            }
+
+            .total-players-badge {
+                background-color: #007acc;
+                color: white;
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-size: 0.9rem;
+                margin-left: 10px;
+            }
+
+            .overlay-title {
+                margin-top: 0;
+                border-bottom: 1px solid #333333;
+                padding-bottom: 10px;
+            }
+
+            .overlay-meta {
+                margin-bottom: 20px;
+            }
+
+            .groups-list-title {
+                width: 100%;
+                margin-top: 0;
+            }
+        </style>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                document.querySelectorAll('.title-card').forEach(card => {
+                    card.addEventListener('click', () => {
+                        card.classList.add('open');
+                    });
+                });
+
+                document.querySelectorAll('.groups-overlay').forEach(overlay => {
+                    overlay.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                        overlay.parentElement.classList.remove('open');
+                    });
+                });
+
+                document.querySelectorAll('.overlay-content').forEach(content => {
+                    content.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                    });
+                });
+
+                document.querySelectorAll('.close-button').forEach(btn => {
+                    btn.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                        btn.closest('.title-card').classList.remove('open');
+                    });
+                });
+            });
+        </script>
+    </head>
+    <body>
+        <h1>Sprawl Status Page <span class="total-players-badge">{{.TotalPlayers}} Players Online</span></h1>
+        <div class="summary">
+            Displaying {{len .Titles}} active titles
+        </div>
+
+        <div class="title-list-container">
+            {{range .Titles}}
+                <div class="title-card">
+                    <div class="title-header">
+                        <div class="title-image" style="background-image: url('https://static.sprawl-relay.link/titledb/{{.TitleID}}.png'), url('https://static.sprawl-relay.link/titledb/placeholder.jpg');"></div>
+                        <div class="title-info">
+                            <p class="title-name">{{if .Name}}{{.Name}}{{else}}Unknown Title{{end}}</p>
+                            <p class="title-meta">{{.TitleID}} | {{.TitleRegion}} | {{.PlayerCount}} Players</p>
+                        </div>
+                    </div>
+                    <div class="groups-overlay">
+                        <div class="overlay-content">
+                            <span class="close-button">&times;</span>
+                            <h2 class="overlay-title">{{if .Name}}{{.Name}}{{else}}Unknown Title{{end}}</h2>
+                            <p class="title-meta overlay-meta">{{.TitleID}} | {{.TitleRegion}} | {{.PlayerCount}} Players</p>
+                            
+                            <div class="groups-list">
+                                <h4 class="groups-list-title">Active Groups ({{len .Groups}}):</h4>
+                                {{range .Groups}}
+                                    <div class="group-item">
+                                        <div class="group-id">Group {{.ID}}</div>
+                                        <ul class="player-list">
+                                            {{range .Players}}
+                                                <li>{{.}}</li>
+                                            {{end}}
+                                        </ul>
+                                    </div>
+                                {{end}}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {{end}}
+        </div>
+    </body>
+</html>

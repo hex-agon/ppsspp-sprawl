@@ -59,7 +59,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	mux.HandleFunc("/status", adhocctl.StatusHandler(ctlServer))
+	mux.HandleFunc("GET /status", adhocctl.StatusHandler(ctlServer))
 	metricsServer := &http.Server{
 		Addr:    "0.0.0.0:" + *metricsPort,
 		Handler: mux,
