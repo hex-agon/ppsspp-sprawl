@@ -64,6 +64,7 @@ func NewCtlServer(addr string, port string) (Server, error) {
 		listener:         listener,
 		ctx:              ctx,
 		cancelFunc:       ctxCancel,
+		clients:          make(map[macAddr]*client),
 		groups:           make(map[titledb.TitleId]map[groupId]*group),
 		unregisterClient: make(chan *client, 16),
 	}
@@ -306,6 +307,12 @@ func (srv *ctlServer) registerClient(conn net.Conn, mac macAddr, name displayNam
 			Str("mac", mac.String()).
 			Str("name", name.String()).
 			Logger(),
+	}
+
+	if _, ok := srv.clients[mac]; ok {
+		c.logger.Warn().Msg("[ctl] duplicate client connection detected")
+		c.close()
+		return
 	}
 
 	srv.clients[mac] = c
