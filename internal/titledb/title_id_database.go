@@ -1,51 +1,64 @@
 package titledb
 
 import (
+	"database/sql"
 	"embed"
+	"errors"
 
-	"github.com/BurntSushi/toml"
 	"github.com/rs/zerolog/log"
+	_ "modernc.org/sqlite"
+	"modernc.org/sqlite/vfs"
 )
 
 // Certain games released in different regions are protocol compatible with each other despite having different titleIds.
 
-//go:embed titles.toml
+//go:embed titledb.sqlite
 var embedFS embed.FS
 
-type GameEntry struct {
-	Name           string   `toml:"name"`
-	Region         string   `toml:"region"`
-	CompatibleWith []string `toml:"compatible_with,omitempty"`
+type Title struct {
+	Name   string
+	Region string
 }
 
-type Title = GameEntry
-
-var Titles = make(map[TitleId]Title)
-var compatibilityMap = make(map[TitleId]TitleId)
+var db *sql.DB
 
 func init() {
-	data, err := embedFS.ReadFile("titles.toml")
+	vfsName, _, err := vfs.New(embedFS)
+
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load embedded titles")
+		log.Fatal().Err(err).Msg("Failed to create SQLite VFS")
 	}
-	var rawTitles map[string]Title
+	db, err = sql.Open("sqlite", "titledb.sqlite?vfs="+vfsName+"&mode=ro")
 
-	if err := toml.Unmarshal(data, &rawTitles); err != nil {
-		log.Fatal().Err(err).Msg("Failed to parse titles")
-	}
-
-	for titleId, entry := range rawTitles {
-		tid := NewTitleId(titleId)
-		Titles[tid] = entry
-
-		for _, compatibleId := range entry.CompatibleWith {
-			compatibilityMap[NewTitleId(compatibleId)] = tid
-		}
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to open titles database")
 	}
 }
 
-// CompatibleTitleId replaces the given titleId with the compatible titleId
+func GetTitle(tid TitleId) (name string, region string, found bool) {
+	err := db.QueryRow("SELECT name, region FROM title WHERE title_id = ?", tid.String()).Scan(&name, &region)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return name, region, false
+		}
+		log.Error().Err(err).Msg("Failed to query title")
+		return name, region, false
+	}
+	return name, region, true
+}
+
 func CompatibleTitleId(tid TitleId) (TitleId, bool) {
-	id, ok := compatibilityMap[tid]
-	return id, ok
+	var parentId *string
+	err := db.QueryRow("SELECT compatible_with FROM title WHERE title_id = ?", tid.String()).Scan(&parentId)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return tid, false
+		}
+		log.Error().Err(err).Msg("Failed to query compatible title")
+		return tid, false
+	}
+	if parentId == nil {
+		return tid, false
+	}
+	return NewTitleId(*parentId), true
 }

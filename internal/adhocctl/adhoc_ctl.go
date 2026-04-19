@@ -100,9 +100,9 @@ func (srv *ctlServer) GetActiveTitles() []TitleStatus {
 			Groups:  make([]GroupStatus, 0, len(groups)),
 		}
 
-		if title, ok := titledb.Titles[tid]; ok {
-			titleStatus.Name = title.Name
-			titleStatus.TitleRegion = title.Region
+		if name, region, ok := titledb.GetTitle(tid); ok {
+			titleStatus.Name = name
+			titleStatus.TitleRegion = region
 		}
 
 		for gid, g := range groups {

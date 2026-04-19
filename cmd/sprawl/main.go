@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"sprawl/internal/adhocctl"
 	"sprawl/internal/relay"
-	"sprawl/internal/titledb"
 	"sync"
 	"syscall"
 	"time"
@@ -71,8 +70,6 @@ func main() {
 		}
 	}()
 	log.Info().Str("port", *metricsPort).Msg("started metrics server")
-
-	log.Info().Msgf("Loaded %d titles in the database", len(titledb.Titles))
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
