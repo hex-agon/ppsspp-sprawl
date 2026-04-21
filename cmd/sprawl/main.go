@@ -18,11 +18,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func init() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
-}
-
 func main() {
+	env := flag.String("env", "dev", "the environment to use")
 	ctlAddr := flag.String("ctl-addr", "0.0.0.0", "address for the ctl server to listen on")
 	ctlPort := flag.String("ctl-port", "27312", "port for the ctl server to listen on")
 	relayAddr := flag.String("relay-addr", "0.0.0.0", "address for the relay server to listen on")
@@ -30,6 +27,9 @@ func main() {
 	metricsPort := flag.String("metrics-port", "8081", "port to listen on for metrics")
 	flag.Parse()
 
+	if *env != "prod" {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
+	}
 	var ctlServer adhocctl.Server
 	var relayServer relay.Server
 
