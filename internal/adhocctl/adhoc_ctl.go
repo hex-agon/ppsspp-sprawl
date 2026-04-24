@@ -103,6 +103,8 @@ func (srv *ctlServer) GetActiveTitles() []TitleStatus {
 		if name, region, ok := titledb.GetTitle(tid); ok {
 			titleStatus.Name = name
 			titleStatus.TitleRegion = region
+		} else {
+			titleStatus.Name = tid.String()
 		}
 
 		for gid, g := range groups {

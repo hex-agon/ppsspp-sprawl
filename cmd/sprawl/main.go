@@ -27,7 +27,9 @@ func main() {
 	metricsPort := flag.String("metrics-port", "8081", "port to listen on for metrics")
 	flag.Parse()
 
-	if *env != "prod" {
+	if *env == "prod" {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	} else {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
 	}
 	var ctlServer adhocctl.Server
