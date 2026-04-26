@@ -70,71 +70,66 @@ func (c *client) reader() {
 	pktBuff := make([]byte, 256)
 
 	for {
-		select {
-		case <-c.ctx.Done():
+		var packetTypeId uint8
+
+		if err := binary.Read(c.conn, binary.LittleEndian, &packetTypeId); err != nil {
+			if err != io.EOF {
+				c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
+			}
+			c.close()
 			return
-		default:
-			var packetTypeId uint8
+		}
 
-			if err := binary.Read(c.conn, binary.LittleEndian, &packetTypeId); err != nil {
-				if err != io.EOF {
-					c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
-				}
-				c.close()
+		if int(packetTypeId) > len(c2sPacketTypes) {
+			c.logger.Warn().Msgf("[ctl] reader: unknown packet type id: %d", packetTypeId)
+			c.close()
+			return
+		}
+		pktType := c2sPacketTypes[packetTypeId]
+
+		if pktType == packetTypePing {
+			continue
+		}
+
+		if pktType == (packetType{}) {
+			c.logger.Warn().Msgf("[ctl] reader: unexpected packet type id: %d", packetTypeId)
+			c.close()
+			return
+		}
+
+		if err := c.read(pktBuff[:pktType.size]); err != nil {
+			if err != io.EOF {
+				c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
+			}
+			c.close()
+			return
+		}
+
+		handlePacketErr := func(err error) {
+			c.logger.Warn().Err(err).Msg("[ctl] reader: client handle packet error")
+			c.close()
+		}
+
+		switch pktType {
+		case packetTypeConnect:
+			if err := handleConnectPacket(c, pktBuff[:pktType.size]); err != nil {
+				handlePacketErr(err)
 				return
 			}
-
-			if int(packetTypeId) > len(c2sPacketTypes) {
-				c.logger.Warn().Msgf("[ctl] reader: unknown packet type id: %d", packetTypeId)
-				c.close()
+		case packetTypeDisconnect:
+			if err := handleDisconnectPacket(c); err != nil {
+				handlePacketErr(err)
 				return
 			}
-			pktType := c2sPacketTypes[packetTypeId]
-
-			if pktType == packetTypePing {
-				continue
-			}
-
-			if pktType == (packetType{}) {
-				c.logger.Warn().Msgf("[ctl] reader: unexpected packet type id: %d", packetTypeId)
-				c.close()
+		case packetTypeScan:
+			if err := handleScanPacket(c); err != nil {
+				handlePacketErr(err)
 				return
 			}
-
-			if err := c.read(pktBuff[:pktType.size]); err != nil {
-				if err != io.EOF {
-					c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
-				}
-				c.close()
+		case packetTypeChat:
+			if err := handleChatPacket(c, pktBuff[:pktType.size]); err != nil {
+				handlePacketErr(err)
 				return
-			}
-
-			handlePacketErr := func(err error) {
-				c.logger.Warn().Err(err).Msg("[ctl] reader: client handle packet error")
-				c.close()
-			}
-
-			switch pktType {
-			case packetTypeConnect:
-				if err := handleConnectPacket(c, pktBuff[:pktType.size]); err != nil {
-					handlePacketErr(err)
-					return
-				}
-			case packetTypeDisconnect:
-				if err := handleDisconnectPacket(c); err != nil {
-					handlePacketErr(err)
-					return
-				}
-			case packetTypeScan:
-				if err := handleScanPacket(c); err != nil {
-					handlePacketErr(err)
-					return
-				}
-			case packetTypeChat:
-				if err := handleChatPacket(c, pktBuff[:pktType.size]); err != nil {
-					handlePacketErr(err)
-					return
-				}
 			}
 		}
 	}
@@ -276,7 +271,7 @@ func handleChatPacket(c *client, payload []byte) error {
 		basePacket: basePacket{
 			packetTypeId: packetTypeChat.id,
 		},
-		message:     payload,
+		message:     append([]byte(nil), payload...),
 		displayName: c.name,
 	}
 
