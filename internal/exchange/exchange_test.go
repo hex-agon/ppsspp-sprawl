@@ -3,9 +3,9 @@ package exchange
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"io"
 	"net"
+	"sprawl/internal/pspnet"
 	"testing"
 	"time"
 
@@ -31,10 +31,10 @@ func TestExchange(t *testing.T) {
 		defer func() { assert.NoError(t, srvConnB.Close()) }()
 		defer func() { assert.NoError(t, clientConnB.Close()) }()
 
-		clientMacA, _ := hex.DecodeString("000102030405")
+		clientMacA := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 		clientPortA := uint16(1001)
 
-		clientMacB, _ := hex.DecodeString("000102030406")
+		clientMacB := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 		clientPortB := uint16(1002)
 
 		RegisterClient(ctx, ex, clientConnA, clientMacA, clientPortA)
@@ -50,7 +50,7 @@ func TestExchange(t *testing.T) {
 		payload := []byte("hello")
 
 		header := make([]byte, pdpHeaderSize)
-		copy(header[0:6], clientMacB)
+		copy(header[0:6], clientMacB[:])
 		binary.LittleEndian.PutUint16(header[8:10], clientPortB)
 		binary.LittleEndian.PutUint32(header[10:14], packetSize)
 
@@ -62,7 +62,7 @@ func TestExchange(t *testing.T) {
 
 		require.NoError(t, err)
 
-		assert.Equal(t, clientMacA, received[0:6], "Expected clientA's mac address")
+		assert.Equal(t, clientMacA[:], received[0:6], "Expected clientA's mac address")
 		assert.Equal(t, clientPortA, binary.LittleEndian.Uint16(received[8:10]), "Expected clientA's port")
 		assert.Equal(t, packetSize, binary.LittleEndian.Uint32(received[10:14]))
 		assert.Equal(t, payload, received[pdpHeaderSize:])
@@ -74,7 +74,7 @@ func TestExchange(t *testing.T) {
 
 		ex := NewExchange(ctx)
 
-		mac, _ := hex.DecodeString("000000000000")
+		mac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 		ex.routePacket(newRoutingKey(mac, 0), []byte("data"))
 		// should just do nothing
 	})

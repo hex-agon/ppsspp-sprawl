@@ -5,18 +5,21 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"sprawl/internal/pspnet"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 const p2pHeaderSize = 4
 const p2pMaxPacketSize = 10 * 1024
 
-const readPacketTimeout = 5 * time.Second
+const readPacketTimeout = 30 * time.Second
 const writePacketTimeout = 2 * time.Second
 
 type peerType int8
@@ -24,11 +27,22 @@ type peerType int8
 const peerTypeListening peerType = 1
 const peerTypeConnecting peerType = 2
 
+func (t peerType) String() string {
+	switch t {
+	case peerTypeListening:
+		return "LISTENING"
+	case peerTypeConnecting:
+		return "CONNECTING"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", t)
+	}
+}
+
 var ErrPeerDisconnected = errors.New("peer disconnected")
 
 type peerKey [8]byte
 
-func newPeerKey(mac []byte, port uint16) peerKey {
+func newPeerKey(mac pspnet.MacAddr, port uint16) peerKey {
 	bytes := make([]byte, 8)
 	copy(bytes[:6], mac[:])
 	binary.LittleEndian.PutUint16(bytes[6:8], port)
@@ -53,14 +67,15 @@ type peer struct {
 	ctxCancel context.CancelFunc
 	closeOnce sync.Once
 	txQueue   chan []byte
-	macAddr   [6]byte
+	macAddr   pspnet.MacAddr
 	port      uint16
 	key       peerKey
 	peerType  peerType
 	peer      *peer
+	logger    zerolog.Logger
 }
 
-func RegisterPeer(ctx context.Context, cancelFunc context.CancelFunc, hub *PeerHub, conn net.Conn, macAddr []byte, port uint16, pType peerType) *peer {
+func registerPeer(ctx context.Context, cancelFunc context.CancelFunc, hub *PeerHub, conn net.Conn, macAddr pspnet.MacAddr, port uint16, pType peerType) *peer {
 	p := &peer{
 		hub:       hub,
 		conn:      conn,
@@ -68,10 +83,15 @@ func RegisterPeer(ctx context.Context, cancelFunc context.CancelFunc, hub *PeerH
 		ctxCancel: cancelFunc,
 		closeOnce: sync.Once{},
 		txQueue:   make(chan []byte, 16),
-		macAddr:   [6]byte(macAddr),
+		macAddr:   macAddr,
 		port:      port,
 		key:       newPeerKey(macAddr, port),
 		peerType:  pType,
+		logger: log.With().
+			Str("ip", conn.RemoteAddr().String()).
+			Str("mac", macAddr.String()).
+			Str("peerType", pType.String()).
+			Logger(),
 	}
 
 	if pType == peerTypeListening {
@@ -95,10 +115,7 @@ func (p *peer) close() {
 		p.ctxCancel()
 
 		if err := p.conn.Close(); err != nil {
-			log.Warn().
-				Str("ip", p.remoteAddr()).
-				Err(err).
-				Msg("[relay] failed to close connection")
+			p.logger.Err(err).Msg("[relay] failed to close connection")
 		}
 		p.hub.unregister <- p
 
@@ -109,9 +126,7 @@ func (p *peer) close() {
 			go other.close()
 		}
 
-		log.Info().
-			Str("ip", p.remoteAddr()).
-			Msg("[relay] peer disconnected")
+		p.logger.Info().Msg("[relay] peer disconnected")
 	})
 }
 
@@ -148,74 +163,41 @@ func (p *peer) reader() {
 	headerBuf := make([]byte, p2pHeaderSize)
 
 	for {
-		select {
-		case <-p.ctx.Done():
-			if p.peerType == peerTypeListening && errors.Is(p.ctx.Err(), context.DeadlineExceeded) {
-				log.Debug().
-					Str("ip", p.remoteAddr()).
-					Str("key", p.key.String()).
-					Msg("[relay] reader: no connection attempt made to listening peer, closing connection.")
-
-				p.close()
-			} else {
-				log.Debug().
-					Str("ip", p.remoteAddr()).
-					Str("key", p.key.String()).
-					Msg("[relay] reader: context cancelled")
+		if err := p.read(headerBuf); err != nil {
+			if err != io.EOF {
+				p.logger.Warn().Err(err).Msg("[relay] reader: client read error")
 			}
+			p.close()
 			return
-		default:
-			if err := p.read(headerBuf); err != nil {
-				if err != io.EOF {
-					log.Warn().
-						Err(err).
-						Str("ip", p.remoteAddr()).
-						Str("key", p.key.String()).
-						Msg("[relay] reader: client read error")
-				}
-				p.close()
-				return
-			}
-			packetSize := binary.LittleEndian.Uint32(headerBuf[:])
-
-			if packetSize > p2pMaxPacketSize {
-				log.Warn().
-					Str("ip", p.remoteAddr()).
-					Str("key", p.key.String()).
-					Uint32("packet-size", packetSize).
-					Msg("[relay] reader: client packed size exceeds limit")
-				p.close()
-				return
-			}
-			packetBuf := make([]byte, p2pHeaderSize+packetSize)
-			copy(packetBuf[0:4], headerBuf[:]) // copy the packet size
-
-			if err := p.readWithTimeout(packetBuf[p2pHeaderSize:], readPacketTimeout); err != nil {
-				log.Warn().
-					Err(err).
-					Str("ip", p.remoteAddr()).
-					Str("key", p.key.String()).
-					Msg("[relay] reader: client read timeout")
-				p.close()
-				return
-			}
-
-			if p.peer == nil {
-				log.Warn().
-					Str("ip", p.remoteAddr()).
-					Str("key", p.key.String()).
-					Msg("[relay] reader: peer has no peer, discarding packet")
-				break
-			}
-
-			if err := p.peer.write(packetBuf, writePacketTimeout); err != nil {
-				if !errors.Is(err, ErrPeerDisconnected) {
-					log.Warn().Err(err).Msg("[relay] failed to write packet to peer")
-				}
-				p.close()
-			}
-			peersRxBytes.Add(float64(len(packetBuf)))
 		}
+		packetSize := binary.LittleEndian.Uint32(headerBuf[:])
+
+		if packetSize > p2pMaxPacketSize {
+			p.logger.Warn().Msg("[relay] reader: client packet size exceeds limit")
+			p.close()
+			return
+		}
+		packetBuf := make([]byte, p2pHeaderSize+packetSize)
+		copy(packetBuf[0:4], headerBuf[:]) // copy the packet size
+
+		if err := p.readWithTimeout(packetBuf[p2pHeaderSize:], readPacketTimeout); err != nil {
+			p.logger.Warn().Err(err).Msg("[relay] reader: client read timeout")
+			p.close()
+			return
+		}
+
+		if p.peer == nil {
+			p.logger.Warn().Msg("[relay] reader: peer has no peer, discarding packet")
+			break
+		}
+
+		if err := p.peer.write(packetBuf, writePacketTimeout); err != nil {
+			if !errors.Is(err, ErrPeerDisconnected) {
+				p.logger.Warn().Err(err).Msg("[relay] failed to write packet to peer")
+			}
+			p.close()
+		}
+		peersRxBytes.Add(float64(len(packetBuf)))
 	}
 }
 
@@ -223,18 +205,11 @@ func (p *peer) writer() {
 	for {
 		select {
 		case <-p.ctx.Done():
-			log.Debug().
-				Str("ip", p.remoteAddr()).
-				Str("key", p.key.String()).
-				Msg("[relay] writer: context cancelled")
+			p.logger.Debug().Msg("[relay] writer: context cancelled")
 			return
 		case payload := <-p.txQueue:
 			if _, err := p.conn.Write(payload); err != nil {
-				log.Warn().
-					Err(err).
-					Str("ip", p.remoteAddr()).
-					Str("key", p.key.String()).
-					Msg("[relay] writer: failed to write data to the client")
+				p.logger.Warn().Err(err).Msg("[relay] writer: failed to write data to the client")
 			}
 			peersTxBytes.Add(float64(len(payload)))
 		}

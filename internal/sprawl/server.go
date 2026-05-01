@@ -1,14 +1,16 @@
-package relay
+package sprawl
 
 import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sprawl/internal/exchange"
 	"sprawl/internal/peerhub"
+	"sprawl/internal/pspnet"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -23,6 +25,21 @@ const initTypePdp initType = 0
 const initTypeP2pListen initType = 1
 const initTypeP2pConnect initType = 2
 const initTypeP2pAccept initType = 3
+
+func (t initType) String() string {
+	switch t {
+	case initTypePdp:
+		return "PDP"
+	case initTypeP2pListen:
+		return "P2P_LISTEN"
+	case initTypeP2pConnect:
+		return "P2P_CONNECT"
+	case initTypeP2pAccept:
+		return "P2P_ACCEPT"
+	default:
+		return fmt.Sprintf("INVALID(%d)", t)
+	}
+}
 
 type Server interface {
 	Shutdown() error
@@ -91,7 +108,6 @@ func (srv *relayServer) connAcceptor() {
 			log.Warn().Err(err).Msg("[relay] failed to accept connection")
 			continue
 		}
-		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] accepted new connection")
 
 		go srv.handleConn(conn)
 	}
@@ -107,6 +123,8 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 		}
 		log.Debug().Str("ip", conn.RemoteAddr().String()).Msg("closed connection")
 	}
+
+	log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] accepted new connection")
 	if err := conn.SetReadDeadline(time.Now().Add(initPacketTimeout)); err != nil {
 		go connCloser(conn)
 		return
@@ -120,16 +138,16 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 	_ = conn.SetReadDeadline(time.Time{})
 
 	initPktType := initType(binary.LittleEndian.Uint32(initBuf[0:4]))
-	srcAddr := initBuf[4:10]
+	srcAddr := pspnet.MacAddr(initBuf[4:10])
 	// padding
 	srcPort := binary.LittleEndian.Uint16(initBuf[12:14])
-	dstAddr := initBuf[14:20]
+	dstAddr := pspnet.MacAddr(initBuf[14:20])
 	// padding
 	dstPort := binary.LittleEndian.Uint16(initBuf[22:24])
 
 	log.Debug().
 		Str("ip", conn.RemoteAddr().String()).
-		Any("init-type", initPktType).
+		Str("init-type", initPktType.String()).
 		Str("src-addr", hex.EncodeToString(srcAddr[:])).
 		Uint16("src-port", srcPort).
 		Str("dst-addr", hex.EncodeToString(dstAddr[:])).

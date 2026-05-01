@@ -3,9 +3,9 @@ package peerhub
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"io"
 	"net"
+	"sprawl/internal/pspnet"
 	"testing"
 	"time"
 
@@ -15,14 +15,14 @@ import (
 )
 
 func TestPeerKey(t *testing.T) {
-	mac, _ := hex.DecodeString("701e7be12c05")
+	mac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 	port := uint16(28468)
 	key := newPeerKey(mac, port)
 
 	t.Run("New", func(t *testing.T) {
-		assert.Equal(t, mac, key[:6])
-		assert.Equal(t, uint8(0x34), key[6])
-		assert.Equal(t, uint8(0x6f), key[7])
+		assert.Equal(t, key[:6], mac[:])
+		assert.Equal(t, key[6], uint8(0x34))
+		assert.Equal(t, key[7], uint8(0x6f))
 	})
 
 	t.Run("Encode", func(t *testing.T) {
@@ -44,21 +44,21 @@ func TestPeer(t *testing.T) {
 
 		hub := NewHub(ctx)
 
-		macA, _ := hex.DecodeString("000102030405")
+		macA := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 		srvConnA, clientConnA := net.Pipe()
 		defer func() { assert.NoError(t, srvConnA.Close()) }()
 		defer func() { assert.NoError(t, clientConnA.Close()) }()
 
-		macB, _ := hex.DecodeString("000102030406")
+		macB := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 		srvConnB, clientConnB := net.Pipe()
 		defer func() { assert.NoError(t, srvConnB.Close()) }()
 		defer func() { assert.NoError(t, clientConnB.Close()) }()
 
 		ctxA, cancelA := context.WithCancel(ctx)
-		peerA := RegisterPeer(ctxA, cancelA, hub, clientConnA, macA, 1001, peerTypeConnecting)
+		peerA := registerPeer(ctxA, cancelA, hub, clientConnA, macA, 1001, peerTypeConnecting)
 
 		ctxB, cancelB := context.WithCancel(ctx)
-		peerB := RegisterPeer(ctxB, cancelB, hub, clientConnB, macB, 1002, peerTypeConnecting)
+		peerB := registerPeer(ctxB, cancelB, hub, clientConnB, macB, 1002, peerTypeConnecting)
 
 		peerA.peer = peerB
 		peerB.peer = peerA
@@ -86,21 +86,21 @@ func TestPeer(t *testing.T) {
 
 		hub := NewHub(ctx)
 
-		macA, _ := hex.DecodeString("000102030405")
+		macA := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 		srvConnA, clientConnA := net.Pipe()
 		defer func() { _ = srvConnA.Close() }()
 		defer func() { _ = clientConnA.Close() }()
 
-		macB, _ := hex.DecodeString("000102030406")
+		macB := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 		srvConnB, clientConnB := net.Pipe()
 		defer func() { _ = srvConnB.Close() }()
 		defer func() { _ = clientConnB.Close() }()
 
 		ctxA, cancelA := context.WithCancel(ctx)
-		peerA := RegisterPeer(ctxA, cancelA, hub, clientConnA, macA, 1001, peerTypeConnecting)
+		peerA := registerPeer(ctxA, cancelA, hub, clientConnA, macA, 1001, peerTypeConnecting)
 
 		ctxB, cancelB := context.WithCancel(ctx)
-		peerB := RegisterPeer(ctxB, cancelB, hub, clientConnB, macB, 1002, peerTypeConnecting)
+		peerB := registerPeer(ctxB, cancelB, hub, clientConnB, macB, 1002, peerTypeConnecting)
 
 		peerA.peer = peerB
 		peerB.peer = peerA

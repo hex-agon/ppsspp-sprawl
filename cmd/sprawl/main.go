@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"sprawl/internal/adhocctl"
 	"sprawl/internal/debug"
-	"sprawl/internal/relay"
+	"sprawl/internal/sprawl"
 	"sync"
 	"syscall"
 	"time"
@@ -34,7 +34,7 @@ func main() {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
 	}
 	var ctlServer adhocctl.Server
-	var relayServer relay.Server
+	var relayServer sprawl.Server
 
 	var initWg sync.WaitGroup
 	initWg.Add(2)
@@ -51,7 +51,7 @@ func main() {
 	go func() {
 		defer initWg.Done()
 		var err error
-		if relayServer, err = relay.NewRelay(*relayAddr, *relayPort); err != nil {
+		if relayServer, err = sprawl.NewRelay(*relayAddr, *relayPort); err != nil {
 			log.Fatal().Err(err).Msg("error while starting relay server")
 		}
 		log.Info().Str("addr", *relayAddr).Str("port", *relayPort).Msg("started relay server successfully")

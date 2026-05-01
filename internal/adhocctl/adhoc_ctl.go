@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"sprawl/internal/packet"
+	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 	"sync"
 	"time"
@@ -49,7 +50,7 @@ type ctlServer struct {
 	ctx              context.Context
 	cancelFunc       context.CancelFunc
 	listener         net.Listener
-	clients          map[macAddr]*client
+	clients          map[pspnet.MacAddr]*client
 	groups           map[titledb.TitleId]map[groupId]*group
 	unregisterClient chan *client
 }
@@ -73,7 +74,7 @@ func NewCtlServer(addr string, port string) (Server, error) {
 		listener:         listener,
 		ctx:              ctx,
 		cancelFunc:       ctxCancel,
-		clients:          make(map[macAddr]*client),
+		clients:          make(map[pspnet.MacAddr]*client),
 		groups:           make(map[titledb.TitleId]map[groupId]*group),
 		unregisterClient: make(chan *client, 16),
 	}
@@ -276,7 +277,7 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		return
 	}
 
-	if !loginPacket.Name.valid() || !loginPacket.Tid.Valid() {
+	if !loginPacket.Name.Valid() || !loginPacket.Tid.Valid() {
 		log.Warn().
 			Str("mac", loginPacket.ClientAddr.String()).
 			Str("name", loginPacket.Name.String()).
@@ -302,7 +303,7 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		Msg("[ctl] client logged in")
 }
 
-func (srv *ctlServer) registerClient(conn net.Conn, mac macAddr, name displayName, tid titledb.TitleId) {
+func (srv *ctlServer) registerClient(conn net.Conn, mac pspnet.MacAddr, name pspnet.DisplayName, tid titledb.TitleId) {
 	srv.Lock()
 	defer srv.Unlock()
 

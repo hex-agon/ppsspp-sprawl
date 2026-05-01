@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 	"testing"
 	"time"
@@ -18,11 +19,11 @@ func TestAdhocCtl(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, server.Shutdown()) }()
 
-	connectClient := func(t *testing.T, name displayName, tid titledb.TitleId) net.Conn {
+	connectClient := func(t *testing.T, name pspnet.DisplayName, tid titledb.TitleId) net.Conn {
 		conn, err := net.Dial("tcp", server.Addr().String())
 		require.NoError(t, err)
 
-		var randomMac macAddr
+		var randomMac pspnet.MacAddr
 		_, err = rand.Read(randomMac[:])
 		assert.NoError(t, err)
 
@@ -51,7 +52,7 @@ func TestAdhocCtl(t *testing.T) {
 	}
 
 	t.Run("ValidClient", func(t *testing.T) {
-		conn := connectClient(t, newDisplayName("displayname"), titledb.NewTitleId("ULUS12345"))
+		conn := connectClient(t, pspnet.NewDisplayName("displayname"), titledb.NewTitleId("ULUS12345"))
 
 		// read to ensure we haven't been disconnected (no EOF)
 		buffer := make([]byte, 1)
@@ -65,7 +66,7 @@ func TestAdhocCtl(t *testing.T) {
 	})
 
 	t.Run("InvalidDisplayName", func(t *testing.T) {
-		conn := connectClient(t, newDisplayName("invalid-display-name"), titledb.NewTitleId("ULUS12345"))
+		conn := connectClient(t, pspnet.NewDisplayName("invalid-display-name"), titledb.NewTitleId("ULUS12345"))
 
 		assertDisconnected(t, conn)
 
@@ -73,7 +74,7 @@ func TestAdhocCtl(t *testing.T) {
 	})
 
 	t.Run("InvalidTitleId", func(t *testing.T) {
-		conn := connectClient(t, newDisplayName("displayname"), titledb.NewTitleId("badtitleid"))
+		conn := connectClient(t, pspnet.NewDisplayName("displayname"), titledb.NewTitleId("badtitleid"))
 
 		assertDisconnected(t, conn)
 

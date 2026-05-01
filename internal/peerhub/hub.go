@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"net"
+	"sprawl/internal/pspnet"
 	"sync"
 	"time"
 
@@ -97,10 +98,7 @@ func (hub *PeerHub) houseKeeper() {
 		case p := <-hub.registerListening:
 			hub.Lock()
 			if _, ok := hub.listeningPeers[p.key]; ok {
-				log.Warn().
-					Str("ip", p.remoteAddr()).
-					Str("key", p.key.String()).
-					Msg("[relay] attempted to register duplicate listening peer")
+				p.logger.Warn().Msg("[relay] attempted to register duplicate listening peer")
 				p.close()
 				continue
 			}
@@ -110,10 +108,7 @@ func (hub *PeerHub) houseKeeper() {
 		case p := <-hub.registerConnected:
 			hub.Lock()
 			if _, ok := hub.connectedPeers[p.key]; ok {
-				log.Warn().
-					Str("ip", p.remoteAddr()).
-					Str("key", p.key.String()).
-					Msg("[relay] attempted to register duplicate connected peer")
+				p.logger.Warn().Msg("[relay] attempted to register duplicate connected peer")
 				p.close()
 				continue
 			}
@@ -141,18 +136,15 @@ func (hub *PeerHub) houseKeeper() {
 	}
 }
 
-func HandleListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAddr []byte, port uint16) {
-	ctx, cancelFunc := context.WithTimeout(ctx, listeningPeerTimeout)
+func HandleListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
+	ctx, cancelFunc := context.WithCancel(ctx)
 
-	p := RegisterPeer(ctx, cancelFunc, hub, conn, macAddr, port, peerTypeListening)
+	p := registerPeer(ctx, cancelFunc, hub, conn, macAddr, port, peerTypeListening)
 
-	log.Info().
-		Str("ip", p.remoteAddr()).
-		Str("key", p.key.String()).
-		Msg("[relay] registered a new listening peer to the hub")
+	p.logger.Info().Msg("[relay] registered a new listening peer to the hub")
 }
 
-func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr []byte, srcPort uint16, targetAddr []byte, targetPort uint16) {
+func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
 	connCloser := func(conn net.Conn) {
 		if err := conn.Close(); err != nil {
 			log.Warn().
@@ -199,7 +191,7 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 
 	ctx, cancelFunc := context.WithCancel(ctx)
 
-	p := RegisterPeer(ctx, cancelFunc, hub, conn, srcAddr, srcPort, peerTypeConnecting)
+	p := registerPeer(ctx, cancelFunc, hub, conn, srcAddr, srcPort, peerTypeConnecting)
 
 	log.Info().
 		Str("ip", p.remoteAddr()).
@@ -207,7 +199,7 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 		Msg("[relay] registered a new connected peer to the hub")
 }
 
-func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr []byte, srcPort uint16, targetAddr []byte, targetPort uint16) {
+func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
 	connCloser := func(conn net.Conn) {
 		if err := conn.Close(); err != nil {
 			log.Warn().
@@ -243,7 +235,7 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 	}
 	ctx, cancelFunc := context.WithCancel(ctx)
 
-	p := RegisterPeer(ctx, cancelFunc, hub, conn, srcAddr, srcPort, peerTypeConnecting)
+	p := registerPeer(ctx, cancelFunc, hub, conn, srcAddr, srcPort, peerTypeConnecting)
 	p.peer = targetPeer
 	targetPeer.peer = p
 

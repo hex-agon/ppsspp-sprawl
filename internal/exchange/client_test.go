@@ -3,9 +3,9 @@ package exchange
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"io"
 	"net"
+	"sprawl/internal/pspnet"
 	"testing"
 	"time"
 
@@ -47,7 +47,7 @@ func TestClient(t *testing.T) {
 		defer func() { assert.NoError(t, srvConn.Close()) }()
 		defer func() { assert.NoError(t, clientConn.Close()) }()
 
-		clientMac, _ := hex.DecodeString("000102030405")
+		clientMac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 		clientPort := uint16(1001)
 		key := newRoutingKey(clientMac, clientPort)
 
@@ -78,7 +78,7 @@ func TestClient(t *testing.T) {
 		ex := NewExchange(ctx)
 		srvConn, clientConn := net.Pipe()
 
-		clientMac, _ := hex.DecodeString("000102030405")
+		clientMac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 		clientPort := uint16(1001)
 		key := newRoutingKey(clientMac, clientPort)
 

@@ -2,9 +2,9 @@ package peerhub
 
 import (
 	"context"
-	"encoding/hex"
 	"io"
 	"net"
+	"sprawl/internal/pspnet"
 	"testing"
 	"time"
 
@@ -25,7 +25,7 @@ func TestHub(t *testing.T) {
 		defer func() { assert.NoError(t, srvConn.Close()) }()
 		defer func() { assert.NoError(t, clientConn.Close()) }()
 
-		macAddr, _ := hex.DecodeString("000102030405")
+		macAddr := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 		port := uint16(1001)
 		key := newPeerKey(macAddr, port)
 
@@ -43,7 +43,7 @@ func TestHub(t *testing.T) {
 
 			hub := NewHub(ctx)
 
-			targetMac, _ := hex.DecodeString("000102030406")
+			targetMac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 			targetPort := uint16(1002)
 			srvConnT, clientConnT := net.Pipe()
 			defer func() { assert.NoError(t, srvConnT.Close()) }()
@@ -51,7 +51,7 @@ func TestHub(t *testing.T) {
 
 			HandleListeningPeer(ctx, hub, clientConnT, targetMac, targetPort)
 
-			srcMac, _ := hex.DecodeString("000102030405")
+			srcMac := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 			srcPort := uint16(1001)
 			srvConnS, clientConnS := net.Pipe()
 			defer func() { assert.NoError(t, srvConnS.Close()) }()
@@ -78,9 +78,9 @@ func TestHub(t *testing.T) {
 
 			hub := NewHub(ctx)
 
-			srcMac, _ := hex.DecodeString("000102030405")
+			srcMac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 			srcPort := uint16(1001)
-			targetMac, _ := hex.DecodeString("000102030406")
+			targetMac := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 			targetPort := uint16(1002)
 
 			srvConn, clientConn := net.Pipe()
@@ -100,7 +100,7 @@ func TestHub(t *testing.T) {
 
 			hub := NewHub(ctx)
 
-			targetMac, _ := hex.DecodeString("000102030406")
+			targetMac := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 			targetPort := uint16(1002)
 			srvConnTarget, clientConnT := net.Pipe()
 			defer func() { assert.NoError(t, srvConnTarget.Close()) }()
@@ -108,13 +108,13 @@ func TestHub(t *testing.T) {
 
 			targetCtx, targetCancel := context.WithCancel(ctx)
 
-			targetPeer := RegisterPeer(targetCtx, targetCancel, hub, clientConnT, targetMac, targetPort, peerTypeConnecting)
+			targetPeer := registerPeer(targetCtx, targetCancel, hub, clientConnT, targetMac, targetPort, peerTypeConnecting)
 
 			require.Eventually(t, func() bool {
 				return hub.findConnectedPeer(targetPeer.key) != nil
 			}, 1*time.Second, 10*time.Millisecond, "Target peer should be registered")
 
-			srcMac, _ := hex.DecodeString("000102030405")
+			srcMac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 			srcPort := uint16(1001)
 			srcKey := newPeerKey(srcMac, srcPort)
 			srvConnSrc, clientConnSrc := net.Pipe()
@@ -148,9 +148,9 @@ func TestHub(t *testing.T) {
 
 			hub := NewHub(ctx)
 
-			srcMac, _ := hex.DecodeString("000102030405")
+			srcMac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 			srcPort := uint16(1001)
-			targetMac, _ := hex.DecodeString("000102030406")
+			targetMac := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 			targetPort := uint16(1002)
 
 			srvConn, clientConn := net.Pipe()
@@ -168,7 +168,7 @@ func TestHub(t *testing.T) {
 
 			hub := NewHub(ctx)
 
-			targetMac, _ := hex.DecodeString("000102030406")
+			targetMac := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 			targetPort := uint16(1002)
 			targetKey := newPeerKey(targetMac, targetPort)
 
@@ -179,7 +179,7 @@ func TestHub(t *testing.T) {
 			}
 			hub.connectedPeers[targetKey] = pTarget
 
-			srcMac, _ := hex.DecodeString("000102030405")
+			srcMac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 			srcPort := uint16(1001)
 
 			srvConn, clientConn := net.Pipe()
@@ -199,13 +199,13 @@ func TestHub(t *testing.T) {
 
 			hub := NewHub(ctx)
 
-			mac, _ := hex.DecodeString("000102030405")
+			mac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 
 			srvConn, clientConn := net.Pipe()
 			defer func() { assert.NoError(t, srvConn.Close()) }()
 
 			peerCtx, peerCancelFunc := context.WithCancel(ctx)
-			p := RegisterPeer(peerCtx, peerCancelFunc, hub, clientConn, mac, 1001, peerTypeListening)
+			p := registerPeer(peerCtx, peerCancelFunc, hub, clientConn, mac, 1001, peerTypeListening)
 
 			require.Eventually(t, func() bool {
 				return hub.findListeningPeer(p.key) != nil
@@ -224,13 +224,13 @@ func TestHub(t *testing.T) {
 
 			hub := NewHub(ctx)
 
-			mac, _ := hex.DecodeString("000102030405")
+			mac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
 			key := newPeerKey(mac, 1001)
 			srvConn, clientConn := net.Pipe()
 			defer func() { assert.NoError(t, srvConn.Close()) }()
 
 			peerCtx, peerCancel := context.WithCancel(ctx)
-			p := RegisterPeer(peerCtx, peerCancel, hub, clientConn, mac, 1001, peerTypeConnecting)
+			p := registerPeer(peerCtx, peerCancel, hub, clientConn, mac, 1001, peerTypeConnecting)
 
 			require.Eventually(t, func() bool {
 				return hub.findConnectedPeer(key) != nil

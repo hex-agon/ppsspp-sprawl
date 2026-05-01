@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"sprawl/internal/packet"
+	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 	"sync"
 	"time"
@@ -23,8 +24,8 @@ type client struct {
 	decoder   *packet.Decoder
 	encoder   *packet.Encoder
 	server    *ctlServer
-	macAddr   macAddr
-	name      displayName
+	macAddr   pspnet.MacAddr
+	name      pspnet.DisplayName
 	titleId   titledb.TitleId // the titleId the client is playing
 	group     *group          // the group the client is currently in
 	txQueue   chan packet.OutboundPacket

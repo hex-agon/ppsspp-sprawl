@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sprawl/internal/pspnet"
 	"sync"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 // RoutingKey is composed of the client's informed mac address (6 bytes) and it's port
 type routingKey [8]byte
 
-func newRoutingKey(mac []byte, port uint16) routingKey {
+func newRoutingKey(mac pspnet.MacAddr, port uint16) routingKey {
 	bytes := make([]byte, 8)
 	copy(bytes[:6], mac[:])
 	binary.LittleEndian.PutUint16(bytes[6:8], port)
@@ -34,13 +35,13 @@ type client struct {
 	ctxCancel  context.CancelFunc
 	closeOnce  sync.Once
 	txQueue    chan []byte
-	macAddr    [6]byte
+	macAddr    pspnet.MacAddr
 	port       uint16
 	routingKey routingKey
 }
 
 // RegisterClient registers a new client, initializes its context, binds it to a specific exchange, and starts reader and writer goroutines for communication.
-func RegisterClient(ctx context.Context, exchange *Exchange, conn net.Conn, macAddr []byte, port uint16) {
+func RegisterClient(ctx context.Context, exchange *Exchange, conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
 	ctx, cancelFunc := context.WithCancel(ctx)
 
 	key := make([]byte, 8)
@@ -54,7 +55,7 @@ func RegisterClient(ctx context.Context, exchange *Exchange, conn net.Conn, macA
 		ctxCancel:  cancelFunc,
 		closeOnce:  sync.Once{},
 		txQueue:    make(chan []byte, 16),
-		macAddr:    [6]byte(macAddr),
+		macAddr:    macAddr,
 		port:       port,
 		routingKey: routingKey(key),
 	}
@@ -137,7 +138,7 @@ func (c *client) reader() {
 				c.close()
 				return
 			}
-			targetMacAddr := headerBuf[:6]
+			targetMacAddr := pspnet.MacAddr(headerBuf[:6])
 			targetPort := binary.LittleEndian.Uint16(headerBuf[8:])
 			packetSize := binary.LittleEndian.Uint32(headerBuf[10:])
 

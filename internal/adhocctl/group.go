@@ -3,6 +3,7 @@ package adhocctl
 import (
 	"bytes"
 	"sprawl/internal/packet"
+	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 	"sync"
 
@@ -41,7 +42,7 @@ type group struct {
 	sync.RWMutex
 	id             groupId
 	tid            titledb.TitleId
-	founderMacAddr macAddr
+	founderMacAddr pspnet.MacAddr
 	srv            *ctlServer
 	clients        map[*client]struct{}
 }

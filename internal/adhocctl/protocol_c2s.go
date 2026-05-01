@@ -2,6 +2,7 @@ package adhocctl
 
 import (
 	"sprawl/internal/packet"
+	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 )
 
@@ -41,8 +42,8 @@ func (c *c2sPing) Type() packet.InboundPacketType {
 }
 
 type c2sLogin struct {
-	ClientAddr macAddr
-	Name       displayName
+	ClientAddr pspnet.MacAddr
+	Name       pspnet.DisplayName
 	Tid        titledb.TitleId
 }
 
@@ -62,8 +63,8 @@ func loginPacketDecoder(buffer []byte) (packet.InboundPacket, error) {
 	reader := packet.NewSliceReader(buffer)
 
 	return &c2sLogin{
-		ClientAddr: macAddr(reader.Bytes(macAddrLen)),
-		Name:       displayName(reader.Bytes(displayNameLen)),
+		ClientAddr: pspnet.MacAddr(reader.Bytes(pspnet.MacAddrLen)),
+		Name:       pspnet.DisplayName(reader.Bytes(pspnet.DisplayNameLen)),
 		Tid:        titledb.TitleId(reader.Bytes(titledb.TitleIdLen)),
 	}, nil
 }

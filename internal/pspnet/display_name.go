@@ -1,27 +1,27 @@
-package adhocctl
+package pspnet
 
 import "bytes"
 
-const displayNameLen = 128
+const DisplayNameLen = 128
 
-// displayName is a null-terminated string composed of a-z, A-Z, 0-9 characters with a maximum length of 128 bytes.
-type displayName [displayNameLen]byte
+// DisplayName is a null-terminated string composed of a-z, A-Z, 0-9 characters with a maximum length of 128 bytes.
+type DisplayName [DisplayNameLen]byte
 
-func newDisplayName(string string) displayName {
-	var result displayName
+func NewDisplayName(string string) DisplayName {
+	var result DisplayName
 	copy(result[:], string)
 	return result
 }
 
-func (d *displayName) String() string {
+func (d *DisplayName) String() string {
 	terminator := bytes.IndexByte(d[:], 0)
 	if terminator == -1 {
-		terminator = displayNameLen
+		terminator = DisplayNameLen
 	}
 	return string(d[:terminator])
 }
 
-func (d *displayName) valid() bool {
+func (d *DisplayName) Valid() bool {
 	length := bytes.IndexByte(d[:], 0)
 
 	if length < 1 {

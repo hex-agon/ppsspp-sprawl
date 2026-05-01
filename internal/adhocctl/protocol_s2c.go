@@ -2,6 +2,7 @@ package adhocctl
 
 import (
 	"sprawl/internal/packet"
+	"sprawl/internal/pspnet"
 )
 
 const (
@@ -24,7 +25,7 @@ func init() {
 
 type s2cScanReply struct {
 	gid         groupId
-	founderAddr macAddr
+	founderAddr pspnet.MacAddr
 }
 
 func (s *s2cScanReply) Type() packet.OutboundPacketType {
@@ -50,7 +51,7 @@ func (s *s2cScanComplete) WriteTo(_ []byte) (int, error) {
 }
 
 type s2cConnectBssid struct {
-	macAddr macAddr
+	macAddr pspnet.MacAddr
 }
 
 func (s *s2cConnectBssid) Type() packet.OutboundPacketType {
@@ -64,8 +65,8 @@ func (s *s2cConnectBssid) WriteTo(dst []byte) (int, error) {
 }
 
 type s2cClientConnected struct {
-	displayName displayName
-	macAddr     macAddr
+	displayName pspnet.DisplayName
+	macAddr     pspnet.MacAddr
 	ipAddr      uint32
 }
 
@@ -97,7 +98,7 @@ func (s *s2cDisconnected) WriteTo(dst []byte) (int, error) {
 
 type s2cChat struct {
 	message     []byte
-	displayName displayName
+	displayName pspnet.DisplayName
 }
 
 func (s *s2cChat) Type() packet.OutboundPacketType {
