@@ -1,8 +1,8 @@
 package titledb
 
-const titleIdLen = 9
+const TitleIdLen = 9
 
-type TitleId [titleIdLen]byte
+type TitleId [TitleIdLen]byte
 
 func NewTitleId(str string) TitleId {
 	var tid TitleId

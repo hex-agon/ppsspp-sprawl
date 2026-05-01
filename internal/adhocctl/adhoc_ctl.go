@@ -1,12 +1,10 @@
 package adhocctl
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
-	"io"
 	"net"
+	"sprawl/internal/packet"
 	"sprawl/internal/titledb"
 	"sync"
 	"time"
@@ -14,8 +12,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const maxPacketSize = 1024
 const loginPacketTimeout = 5 * time.Second
-
 const writePacketTimeout = 5 * time.Second
 
 type GroupStatus struct {
@@ -230,36 +228,19 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		connCloser(conn)
 		return
 	}
-	var packetTypeId uint8
+	decoder := packet.NewDecoder(conn, maxPacketSize)
 
-	if err := binary.Read(conn, binary.LittleEndian, &packetTypeId); err != nil {
-		connCloser(conn)
-		return
-	}
+	pkt, err := decoder.Next()
 
-	if packetTypeId != packetTypeLogin.id {
-		log.Warn().
-			Str("ip", conn.RemoteAddr().String()).
-			Msgf("[ctl] init: unexpected packet type during login: %d", packetTypeId)
-		connCloser(conn)
-		return
-	}
-	loginBuff := make([]byte, packetTypeLogin.size)
-
-	if _, err := io.ReadFull(conn, loginBuff); err != nil {
+	if err != nil {
 		connCloser(conn)
 		return
 	}
 	_ = conn.SetReadDeadline(time.Time{})
 
-	var loginPacket struct {
-		ClientAddr macAddr
-		Name       displayName
-		Tid        titledb.TitleId
-	}
-
-	if err := binary.Read(bytes.NewReader(loginBuff), binary.LittleEndian, &loginPacket); err != nil {
-		log.Debug().Err(err).Msg("[ctl] init: failed to read packet")
+	loginPacket, ok := pkt.(*c2sLogin)
+	if !ok {
+		log.Debug().Msg("[ctl] init: packet is not a login packet")
 		connCloser(conn)
 		return
 	}
@@ -297,15 +278,17 @@ func (srv *ctlServer) registerClient(conn net.Conn, mac macAddr, name displayNam
 	ctx, cancelFunc := context.WithCancel(srv.ctx)
 
 	c := &client{
-		conn:      conn,
 		ctx:       ctx,
 		ctxCancel: cancelFunc,
 		closeOnce: sync.Once{},
+		conn:      conn,
+		decoder:   packet.NewDecoder(conn, maxPacketSize),
+		encoder:   packet.NewEncoder(conn, maxPacketSize),
 		macAddr:   mac,
 		server:    srv,
 		titleId:   tid,
 		name:      name,
-		txQueue:   make(chan any, 32),
+		txQueue:   make(chan packet.OutboundPacket, 32),
 		logger: log.With().
 			Str("ip", conn.RemoteAddr().String()).
 			Str("mac", mac.String()).

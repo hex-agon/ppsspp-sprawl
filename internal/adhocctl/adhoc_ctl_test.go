@@ -2,7 +2,6 @@ package adhocctl
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"io"
 	"net"
 	"os"
@@ -27,18 +26,20 @@ func TestAdhocCtl(t *testing.T) {
 		_, err = rand.Read(randomMac[:])
 		assert.NoError(t, err)
 
-		loginPacket := struct {
-			PacketId   uint8
-			ClientAddr macAddr
-			Name       displayName
-			Tid        titledb.TitleId
-		}{
-			PacketId:   packetTypeLogin.id,
+		loginPacket := &c2sLogin{
 			ClientAddr: randomMac,
 			Name:       name,
 			Tid:        tid,
 		}
-		assert.NoError(t, binary.Write(conn, binary.BigEndian, loginPacket))
+
+		buf := make([]byte, 1+inboundPacketLoginSize)
+		buf[0] = byte(loginPacket.Type())
+		n, err := loginPacket.WriteTo(buf[1:])
+		assert.NoError(t, err)
+		assert.Equal(t, inboundPacketLoginSize, n)
+
+		_, err = conn.Write(buf)
+		assert.NoError(t, err)
 
 		return conn
 	}

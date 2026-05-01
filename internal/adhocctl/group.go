@@ -1,11 +1,41 @@
 package adhocctl
 
 import (
+	"bytes"
+	"sprawl/internal/packet"
 	"sprawl/internal/titledb"
 	"sync"
 
 	"github.com/rs/zerolog/log"
 )
+
+const groupIdLen = 8
+
+type groupId [groupIdLen]byte
+
+func (g *groupId) String() string {
+	terminator := bytes.IndexByte(g[:], 0)
+	if terminator == -1 {
+		return string(g[:])
+	}
+	return string(g[:terminator])
+}
+
+func (g *groupId) valid() bool {
+	length := bytes.IndexByte(g[:], 0)
+
+	if length == -1 {
+		length = groupIdLen
+	}
+
+	for i := 0; i < length; i++ {
+		char := g[i]
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') {
+			return false
+		}
+	}
+	return true
+}
 
 type group struct {
 	sync.RWMutex
@@ -52,7 +82,7 @@ func (g *group) forEach(consumer func(*client)) {
 	}
 }
 
-func (g *group) broadcast(packet any, filter func(*client) bool) {
+func (g *group) broadcast(packet packet.OutboundPacket, filter func(*client) bool) {
 	g.forEach(func(c *client) {
 		if filter(c) {
 			if err := c.write(packet, writePacketTimeout); err != nil {
@@ -63,7 +93,7 @@ func (g *group) broadcast(packet any, filter func(*client) bool) {
 	})
 }
 
-func (g *group) broadcastAll(packet any) {
+func (g *group) broadcastAll(packet packet.OutboundPacket) {
 	g.forEach(func(c *client) {
 		if err := c.write(packet, writePacketTimeout); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
