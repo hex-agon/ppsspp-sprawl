@@ -2,6 +2,7 @@ package exchange
 
 import (
 	"context"
+	"net"
 	"sync"
 	"time"
 
@@ -21,6 +22,27 @@ type Exchange struct {
 	clients    map[routingKey]*client
 	register   chan *client
 	unregister chan *client
+}
+
+type ClientInfo struct {
+	MAC  string `json:"mac"`
+	Port uint16 `json:"port"`
+	IP   string `json:"ip"`
+}
+
+func (ex *Exchange) GetClients() []ClientInfo {
+	ex.RLock()
+	defer ex.RUnlock()
+
+	result := make([]ClientInfo, 0, len(ex.clients))
+	for _, cli := range ex.clients {
+		result = append(result, ClientInfo{
+			MAC:  net.HardwareAddr(cli.macAddr[:]).String(),
+			Port: cli.port,
+			IP:   cli.conn.RemoteAddr().String(),
+		})
+	}
+	return result
 }
 
 func NewExchange(ctx context.Context) *Exchange {

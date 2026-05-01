@@ -29,10 +29,20 @@ type TitleStatus struct {
 	PlayerCount int           `json:"player_count,omitzero"`
 }
 
+type CtlClientInfo struct {
+	MAC      string `json:"mac"`
+	Name     string `json:"name"`
+	IP       string `json:"ip"`
+	TitleID  string `json:"title_id"`
+	GroupID  string `json:"group_id"`
+	IsLeader bool   `json:"is_leader"`
+}
+
 type Server interface {
 	Shutdown() error
 	Addr() net.Addr
 	GetActiveTitles() []TitleStatus
+	GetClients() []CtlClientInfo
 }
 type ctlServer struct {
 	sync.RWMutex
@@ -121,6 +131,27 @@ func (srv *ctlServer) GetActiveTitles() []TitleStatus {
 		result = append(result, titleStatus)
 	}
 
+	return result
+}
+
+func (srv *ctlServer) GetClients() []CtlClientInfo {
+	srv.RLock()
+	defer srv.RUnlock()
+
+	result := make([]CtlClientInfo, 0, len(srv.clients))
+	for _, cli := range srv.clients {
+		info := CtlClientInfo{
+			MAC:     cli.macAddr.String(),
+			Name:    cli.name.String(),
+			IP:      cli.conn.RemoteAddr().String(),
+			TitleID: cli.titleId.String(),
+		}
+		if cli.group != nil {
+			info.GroupID = cli.group.id.String()
+			info.IsLeader = cli.macAddr == cli.group.founderMacAddr
+		}
+		result = append(result, info)
+	}
 	return result
 }
 

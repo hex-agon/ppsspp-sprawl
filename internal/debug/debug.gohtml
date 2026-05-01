@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sprawl Debug</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .tabs { display: flex; border-bottom: 1px solid #ccc; }
+        .tab { padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; }
+        .tab.active { border-color: #ccc; background: #f9f9f9; font-weight: bold; }
+        .tab-content { display: none; padding: 20px; border: 1px solid #ccc; border-top: none; }
+        .tab-content.active { display: block; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <h1>Sprawl Debug</h1>
+    <div class="tabs">
+        <div class="tab active" onclick="showTab('ctl')">Ctl Server Clients</div>
+        <div class="tab" onclick="showTab('exchange')">Exchange Clients</div>
+        <div class="tab" onclick="showTab('peerhub')">PeerHub Peers</div>
+    </div>
+
+    <div id="ctl" class="tab-content active">
+        <h2>Ctl Server Clients</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>MAC</th>
+                    <th>Name</th>
+                    <th>IP</th>
+                    <th>Title ID</th>
+                    <th>Group ID</th>
+                    <th>Leader</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .CtlClients}}
+                <tr>
+                    <td>{{.MAC}}</td>
+                    <td>{{.Name}}</td>
+                    <td>{{.IP}}</td>
+                    <td>{{.TitleID}}</td>
+                    <td>{{.GroupID}}</td>
+                    <td>{{if .IsLeader}}Yes{{else}}No{{end}}</td>
+                </tr>
+                {{else}}
+                <tr><td colspan="6">No clients connected</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="exchange" class="tab-content">
+        <h2>Exchange Clients</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>MAC</th>
+                    <th>Port</th>
+                    <th>IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .ExchangeClients}}
+                <tr>
+                    <td>{{.MAC}}</td>
+                    <td>{{.Port}}</td>
+                    <td>{{.IP}}</td>
+                </tr>
+                {{else}}
+                <tr><td colspan="3">No clients connected</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="peerhub" class="tab-content">
+        <h2>PeerHub Peers</h2>
+        <h3>Listening Peers</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>MAC</th>
+                    <th>Port</th>
+                    <th>IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .ListeningPeers}}
+                <tr>
+                    <td>{{.MAC}}</td>
+                    <td>{{.Port}}</td>
+                    <td>{{.IP}}</td>
+                </tr>
+                {{else}}
+                <tr><td colspan="3">No listening peers</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+
+        <h3>Connected Peers</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>MAC</th>
+                    <th>Port</th>
+                    <th>IP</th>
+                    <th>Connected To</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .ConnectedPeers}}
+                <tr>
+                    <td>{{.MAC}}</td>
+                    <td>{{.Port}}</td>
+                    <td>{{.IP}}</td>
+                    <td>{{if .ConnectedTo}}{{.ConnectedTo}}{{else}}-{{end}}</td>
+                </tr>
+                {{else}}
+                <tr><td colspan="4">No connected peers</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function showTab(id) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+    </script>
+</body>
+</html>

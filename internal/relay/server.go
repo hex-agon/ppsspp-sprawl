@@ -26,6 +26,8 @@ const initTypeP2pAccept initType = 3
 
 type Server interface {
 	Shutdown() error
+	GetExchange() *exchange.Exchange
+	GetHub() *peerhub.PeerHub
 }
 
 type relayServer struct {
@@ -68,6 +70,14 @@ func NewRelay(addr string, port string) (Server, error) {
 func (srv *relayServer) Shutdown() error {
 	srv.cancelFunc()
 	return srv.listener.Close()
+}
+
+func (srv *relayServer) GetExchange() *exchange.Exchange {
+	return srv.exchange
+}
+
+func (srv *relayServer) GetHub() *peerhub.PeerHub {
+	return srv.hub
 }
 
 func (srv *relayServer) connAcceptor() {

@@ -23,6 +23,46 @@ type PeerHub struct {
 	unregister        chan *peer
 }
 
+type PeerInfo struct {
+	MAC         string `json:"mac"`
+	Port        uint16 `json:"port"`
+	IP          string `json:"ip"`
+	ConnectedTo string `json:"connected_to,omitzero"`
+}
+
+func formatMAC(mac [6]byte) string {
+	return net.HardwareAddr(mac[:]).String()
+}
+
+func (hub *PeerHub) GetPeers() (listening []PeerInfo, connected []PeerInfo) {
+	hub.RLock()
+	defer hub.RUnlock()
+
+	listening = make([]PeerInfo, 0, len(hub.listeningPeers))
+	for _, p := range hub.listeningPeers {
+		listening = append(listening, PeerInfo{
+			MAC:  formatMAC(p.macAddr),
+			Port: p.port,
+			IP:   p.conn.RemoteAddr().String(),
+		})
+	}
+
+	connected = make([]PeerInfo, 0, len(hub.connectedPeers))
+	for _, p := range hub.connectedPeers {
+		info := PeerInfo{
+			MAC:  formatMAC(p.macAddr),
+			Port: p.port,
+			IP:   p.conn.RemoteAddr().String(),
+		}
+		if p.peer != nil {
+			info.ConnectedTo = formatMAC(p.peer.macAddr)
+		}
+		connected = append(connected, info)
+	}
+
+	return listening, connected
+}
+
 func NewHub(ctx context.Context) *PeerHub {
 	hub := &PeerHub{
 		ctx:               ctx,

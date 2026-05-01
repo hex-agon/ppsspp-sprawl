@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"sprawl/internal/adhocctl"
+	"sprawl/internal/debug"
 	"sprawl/internal/relay"
 	"sync"
 	"syscall"
@@ -61,6 +62,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("GET /status", adhocctl.StatusHandler(ctlServer))
+	mux.HandleFunc("GET /debug", debug.DebugHandler(ctlServer, relayServer.GetExchange(), relayServer.GetHub()))
 	metricsServer := &http.Server{
 		Addr:    "0.0.0.0:" + *metricsPort,
 		Handler: mux,
