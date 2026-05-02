@@ -35,6 +35,10 @@ func (d *Decoder) Next() (InboundPacket, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if int(packetTypeId) >= len(inboundPacketRegistry) {
+		return nil, fmt.Errorf("packet type id out of bounds: %d", packetTypeId)
+	}
 	pktType := inboundPacketRegistry[packetTypeId]
 
 	if pktType.decoder == nil {
