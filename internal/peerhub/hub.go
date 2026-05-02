@@ -11,8 +11,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const listeningPeerTimeout = 30 * time.Second
-
 type PeerHub struct {
 	sync.RWMutex
 	ctx            context.Context
