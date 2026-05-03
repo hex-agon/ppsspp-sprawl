@@ -47,6 +47,7 @@ func TestAdhocCtl(t *testing.T) {
 
 	assertDisconnected := func(t *testing.T, conn net.Conn) {
 		buffer := make([]byte, 1)
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(1*time.Second)))
 		_, err := conn.Read(buffer)
 		require.Equal(t, io.EOF, err)
 	}
@@ -66,7 +67,7 @@ func TestAdhocCtl(t *testing.T) {
 	})
 
 	t.Run("InvalidDisplayName", func(t *testing.T) {
-		conn := connectClient(t, pspnet.NewDisplayName("invalid-display-name"), titledb.NewTitleId("ULUS12345"))
+		conn := connectClient(t, pspnet.NewDisplayName("invalid-display-name#%#@%"), titledb.NewTitleId("ULUS12345"))
 
 		assertDisconnected(t, conn)
 

@@ -22,6 +22,8 @@ func (d *DisplayName) String() string {
 }
 
 func (d *DisplayName) Valid() bool {
+	const validDisplayNameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_#"
+
 	length := bytes.IndexByte(d[:], 0)
 
 	if length < 1 {
@@ -29,9 +31,7 @@ func (d *DisplayName) Valid() bool {
 	}
 
 	for i := 0; i < length; i++ {
-		char := d[i]
-		// TODO: I think there's some special characters that are allowed here too (- and _ comes to mind)
-		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') {
+		if !bytes.ContainsAny(d[i:i+1], validDisplayNameChars) {
 			return false
 		}
 	}
