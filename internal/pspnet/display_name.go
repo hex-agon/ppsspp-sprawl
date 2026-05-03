@@ -22,7 +22,7 @@ func (d *DisplayName) String() string {
 }
 
 func (d *DisplayName) Valid() bool {
-	const validDisplayNameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_#"
+	const validDisplayNameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_#áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ"
 
 	length := bytes.IndexByte(d[:], 0)
 
