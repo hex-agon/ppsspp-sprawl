@@ -37,25 +37,7 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 		if *pyroscopeAddr != "" {
-			var err error
-			profiler, err = pyroscope.Start(pyroscope.Config{
-				ServerAddress:   *pyroscopeAddr,
-				ApplicationName: "sprawl",
-				Tags: map[string]string{
-					"env":  *env,
-					"node": *nodeName,
-				},
-				Logger: pyroscope.StandardLogger,
-
-				ProfileTypes: []pyroscope.ProfileType{
-					pyroscope.ProfileCPU,
-					pyroscope.ProfileMutexCount,
-					pyroscope.ProfileMutexDuration,
-				},
-			})
-			if err != nil {
-				log.Fatal().Err(err).Msg("failed to start pyroscope")
-			}
+			profiler = startPyroScope(*pyroscopeAddr, *env, *nodeName)
 		}
 	} else {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
@@ -128,4 +110,26 @@ func main() {
 		}
 	}
 	log.Info().Msg("shutdown complete")
+}
+
+func startPyroScope(serverAddr string, env string, nodeName string) *pyroscope.Profiler {
+	profiler, err := pyroscope.Start(pyroscope.Config{
+		ServerAddress:   serverAddr,
+		ApplicationName: "sprawl",
+		Tags: map[string]string{
+			"env":  env,
+			"node": nodeName,
+		},
+		Logger: pyroscope.StandardLogger,
+
+		ProfileTypes: []pyroscope.ProfileType{
+			pyroscope.ProfileCPU,
+			pyroscope.ProfileMutexCount,
+			pyroscope.ProfileMutexDuration,
+		},
+	})
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to start pyroscope")
+	}
+	return profiler
 }
