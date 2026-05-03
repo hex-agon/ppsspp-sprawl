@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -26,10 +27,36 @@ func main() {
 	relayAddr := flag.String("relay-addr", "0.0.0.0", "address for the relay server to listen on")
 	relayPort := flag.String("relay-port", "27313", "port for the relay server to listen on")
 	metricsPort := flag.String("metrics-port", "8081", "port to listen on for metrics")
+	nodeName := flag.String("node-name", "local", "node name")
+	pyroscopeAddr := flag.String("pyroscope-addr", "", "address for the pyroscope server")
 	flag.Parse()
+
+	var profiler *pyroscope.Profiler
 
 	if *env == "prod" {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+		if pyroscopeAddr != nil {
+			var err error
+			profiler, err = pyroscope.Start(pyroscope.Config{
+				ServerAddress:   *pyroscopeAddr,
+				ApplicationName: "sprawl",
+				Tags: map[string]string{
+					"env":  *env,
+					"node": *nodeName,
+				},
+				Logger: pyroscope.StandardLogger,
+
+				ProfileTypes: []pyroscope.ProfileType{
+					pyroscope.ProfileCPU,
+					pyroscope.ProfileMutexCount,
+					pyroscope.ProfileMutexDuration,
+				},
+			})
+			if err != nil {
+				log.Fatal().Err(err).Msg("failed to start pyroscope")
+			}
+		}
 	} else {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
 	}
@@ -92,7 +119,13 @@ func main() {
 		log.Warn().Err(err).Msg("error while shutting ctl server gracefully")
 	}
 	if err := relayServer.Shutdown(); err != nil {
-		log.Warn().Err(err).Msg("error while shutting relay server gracefully")
+		log.Warn().Err(err).Msg("error while shutting down relay server gracefully")
+	}
+
+	if profiler != nil {
+		if err := profiler.Stop(); err != nil {
+			log.Warn().Err(err).Msg("error while shutting down profiler gracefully")
+		}
 	}
 	log.Info().Msg("shutdown complete")
 }
