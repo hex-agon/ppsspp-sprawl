@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"sprawl/internal/adhocctl"
@@ -14,7 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/pyroscope-go"
+	_ "net/http/pprof"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -27,18 +29,10 @@ func main() {
 	relayAddr := flag.String("relay-addr", "0.0.0.0", "address for the relay server to listen on")
 	relayPort := flag.String("relay-port", "27313", "port for the relay server to listen on")
 	metricsPort := flag.String("metrics-port", "8081", "port to listen on for metrics")
-	nodeName := flag.String("node-name", "local", "node name")
-	pyroscopeAddr := flag.String("pyroscope-addr", "", "address for the pyroscope server")
 	flag.Parse()
-
-	var profiler *pyroscope.Profiler
 
 	if *env == "prod" {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-
-		if *pyroscopeAddr != "" {
-			profiler = startPyroScope(*pyroscopeAddr, *env, *nodeName)
-		}
 	} else {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
 	}
@@ -70,6 +64,11 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	mux.HandleFunc("GET /status", adhocctl.StatusHandler(ctlServer))
 	mux.HandleFunc("GET /debug", debug.DebugHandler(ctlServer, relayServer.GetExchange(), relayServer.GetHub()))
 	metricsServer := &http.Server{
@@ -104,32 +103,5 @@ func main() {
 		log.Warn().Err(err).Msg("error while shutting down relay server gracefully")
 	}
 
-	if profiler != nil {
-		if err := profiler.Stop(); err != nil {
-			log.Warn().Err(err).Msg("error while shutting down profiler gracefully")
-		}
-	}
 	log.Info().Msg("shutdown complete")
-}
-
-func startPyroScope(serverAddr string, env string, nodeName string) *pyroscope.Profiler {
-	profiler, err := pyroscope.Start(pyroscope.Config{
-		ServerAddress:   serverAddr,
-		ApplicationName: "sprawl",
-		Tags: map[string]string{
-			"env":  env,
-			"node": nodeName,
-		},
-		Logger: pyroscope.StandardLogger,
-
-		ProfileTypes: []pyroscope.ProfileType{
-			pyroscope.ProfileCPU,
-			pyroscope.ProfileMutexCount,
-			pyroscope.ProfileMutexDuration,
-		},
-	})
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to start pyroscope")
-	}
-	return profiler
 }
