@@ -36,7 +36,7 @@ func main() {
 	if *env == "prod" {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-		if pyroscopeAddr != nil {
+		if *pyroscopeAddr != "" {
 			var err error
 			profiler, err = pyroscope.Start(pyroscope.Config{
 				ServerAddress:   *pyroscopeAddr,
