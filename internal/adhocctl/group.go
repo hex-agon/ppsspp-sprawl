@@ -56,14 +56,8 @@ func (g *group) add(c *client) error {
 
 func (g *group) remove(c *client) {
 	g.Lock()
-	defer g.Unlock()
-
 	delete(g.clients, c)
-
-	if len(g.clients) == 0 {
-		g.srv.disbandGroup(g)
-		return
-	}
+	disbandGroup := len(g.clients) == 0
 
 	if c.macAddr == g.founderMacAddr {
 		for newLeader := range g.clients {
@@ -71,6 +65,11 @@ func (g *group) remove(c *client) {
 			g.founderMacAddr = newLeader.macAddr
 			break
 		}
+	}
+	g.Unlock()
+
+	if disbandGroup {
+		g.srv.disbandGroup(g)
 	}
 }
 
