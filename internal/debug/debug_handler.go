@@ -1,9 +1,11 @@
 package debug
 
 import (
+	"cmp"
 	"embed"
 	"html/template"
 	"net/http"
+	"slices"
 	"sprawl/internal/adhocctl"
 	"sprawl/internal/exchange"
 	"sprawl/internal/peerhub"
@@ -26,9 +28,25 @@ type DebugData struct {
 func DebugHandler(srv adhocctl.Server, ex *exchange.Exchange, hub *peerhub.PeerHub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		listening, connected := hub.GetPeers()
+		ctlClients := srv.GetClients()
+		exchangeClients := ex.GetClients()
+
+		slices.SortFunc(ctlClients, func(a, b adhocctl.CtlClientInfo) int {
+			return cmp.Compare(a.MAC, b.MAC)
+		})
+		slices.SortFunc(exchangeClients, func(a, b exchange.ClientInfo) int {
+			return cmp.Compare(a.MAC, b.MAC)
+		})
+		slices.SortFunc(listening, func(a, b peerhub.PeerInfo) int {
+			return cmp.Compare(a.MAC, b.MAC)
+		})
+		slices.SortFunc(connected, func(a, b peerhub.PeerInfo) int {
+			return cmp.Compare(a.MAC, b.MAC)
+		})
+
 		data := DebugData{
-			CtlClients:      srv.GetClients(),
-			ExchangeClients: ex.GetClients(),
+			CtlClients:      ctlClients,
+			ExchangeClients: exchangeClients,
 			ListeningPeers:  listening,
 			ConnectedPeers:  connected,
 		}

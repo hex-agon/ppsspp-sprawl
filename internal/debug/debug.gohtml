@@ -4,16 +4,17 @@
     <meta charset="UTF-8">
     <title>Sprawl Debug</title>
     <style>
-        body { font-family: sans-serif; margin: 20px; }
-        .tabs { display: flex; border-bottom: 1px solid #ccc; }
-        .tab { padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; }
-        .tab.active { border-color: #ccc; background: #f9f9f9; font-weight: bold; }
-        .tab-content { display: none; padding: 20px; border: 1px solid #ccc; border-top: none; }
+        body { font-family: sans-serif; margin: 20px; background-color: #121212; color: #e0e0e0; }
+        .tabs { display: flex; border-bottom: 1px solid #444; }
+        .tab { padding: 10px 20px; cursor: pointer; border: 1px solid transparent; border-bottom: none; color: #aaa; }
+        .tab.active { border-color: #444; background: #1e1e1e; font-weight: bold; color: #fff; }
+        .tab-content { display: none; padding: 20px; border: 1px solid #444; border-top: none; background: #1e1e1e; }
         .tab-content.active { display: block; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
+        th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+        th { background-color: #2c2c2c; color: #fff; }
+        tr:nth-child(even) { background-color: #252525; }
+        h1, h2, h3 { color: #fff; }
     </style>
 </head>
 <body>
