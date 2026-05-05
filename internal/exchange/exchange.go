@@ -3,6 +3,7 @@ package exchange
 import (
 	"context"
 	"net"
+	"sprawl/internal/pspnet"
 	"sync"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 const pdpHeaderSize = 14
 const pdpMaxPacketSize = 10 * 1024
 
-const readPacketTimeout = 30 * time.Second
 const writePacketTimeout = 2 * time.Second
 
 // Exchange represents a hub for managing client connections and routing messages between them.
@@ -67,25 +67,22 @@ func (ex *Exchange) houseKeeper() {
 		select {
 		case <-ex.ctx.Done():
 			return
-		case cli := <-ex.register:
-			if cli.routingKey == (routingKey{}) {
-				log.Warn().Str("ip", cli.remoteAddr()).Msg("[relay] client has empty routing key")
-				go cli.close()
+		case c := <-ex.register:
+			if c.routingKey == (routingKey{}) {
+				c.logger.Warn().Msg("[relay] client has empty routing key")
+				go c.close()
 				break
 			}
 
 			ex.Lock()
-			if _, ok := ex.clients[cli.routingKey]; ok {
-				log.Warn().
-					Str("ip", cli.remoteAddr()).
-					Str("key", cli.routingKey.String()).
-					Msg("[relay] duplicate client registration attempt")
+			if _, ok := ex.clients[c.routingKey]; ok {
+				c.logger.Warn().Msg("[relay] duplicate client registration attempt")
 
-				go cli.close()
+				go c.close()
 				ex.Unlock()
 				break
 			}
-			ex.clients[cli.routingKey] = cli
+			ex.clients[c.routingKey] = c
 			clientsCount.Inc()
 			ex.Unlock()
 		case cli := <-ex.unregister:
@@ -99,15 +96,43 @@ func (ex *Exchange) houseKeeper() {
 	}
 }
 
-func (ex *Exchange) routePacket(key routingKey, payload []byte) {
-	if cli := ex.findClient(key); cli != nil {
-		if err := cli.write(payload, writePacketTimeout); err != nil {
-			log.Warn().
-				Err(err).
-				Str("ip", cli.remoteAddr()).
-				Str("key", cli.routingKey.String()).
-				Msg("[relay] failed to write packet")
-			ex.unregister <- cli
+// RegisterClient registers a new client, initializes its context, binds it to a specific exchange, and starts reader and writer goroutines for communication.
+func (ex *Exchange) RegisterClient(ctx context.Context, conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
+	ctx, cancelFunc := context.WithCancel(ctx)
+
+	c := &client{
+		exchange:   ex,
+		conn:       conn,
+		decoder:    newDecoder(conn),
+		encoder:    newEncoder(conn, pdpHeaderSize+pdpMaxPacketSize),
+		ctx:        ctx,
+		ctxCancel:  cancelFunc,
+		closeOnce:  sync.Once{},
+		txQueue:    make(chan *pdpPacket, 16),
+		macAddr:    macAddr,
+		port:       port,
+		routingKey: newRoutingKey(macAddr, port),
+		logger: log.With().
+			Str("ip", conn.RemoteAddr().String()).
+			Str("mac", macAddr.String()).
+			Uint16("port", port).
+			Logger(),
+	}
+
+	ex.register <- c
+	go c.reader()
+	go c.writer()
+
+	c.logger.Info().Msg("[relay] registered a new client to the exchange")
+}
+
+func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16, packet *pdpPacket) {
+	key := newRoutingKey(targetMacAddr, targetPort)
+
+	if c := ex.findClient(key); c != nil {
+		if err := c.write(packet, writePacketTimeout); err != nil {
+			c.logger.Warn().Err(err).Msg("[relay] failed to write packet")
+			ex.unregister <- c
 		}
 		return
 	}

@@ -26,14 +26,16 @@ func TestClient(t *testing.T) {
 
 		cli := &client{
 			conn:      srvConn,
+			decoder:   newDecoder(srvConn),
+			encoder:   newEncoder(srvConn, pdpHeaderSize+pdpMaxPacketSize),
 			ctx:       ctx,
 			ctxCancel: cancel,
-			txQueue:   make(chan []byte, 1),
+			txQueue:   make(chan *pdpPacket, 1),
 		}
-		err := cli.write([]byte("fill tx queue"), writePacketTimeout)
+		err := cli.write(&pdpPacket{payload: []byte("fill tx queue")}, writePacketTimeout)
 		assert.NoError(t, err)
 
-		err = cli.write([]byte("write timeout"), 10*time.Millisecond)
+		err = cli.write(&pdpPacket{payload: []byte("write timeout")}, 10*time.Millisecond)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "tx queue full")
 	})
@@ -51,7 +53,7 @@ func TestClient(t *testing.T) {
 		clientPort := uint16(1001)
 		key := newRoutingKey(clientMac, clientPort)
 
-		RegisterClient(ctx, ex, clientConn, clientMac, clientPort)
+		ex.RegisterClient(ctx, clientConn, clientMac, clientPort)
 
 		assert.Eventually(t, func() bool {
 			return ex.findClient(key) != nil
@@ -82,7 +84,7 @@ func TestClient(t *testing.T) {
 		clientPort := uint16(1001)
 		key := newRoutingKey(clientMac, clientPort)
 
-		RegisterClient(ctx, ex, clientConn, clientMac, clientPort)
+		ex.RegisterClient(ctx, clientConn, clientMac, clientPort)
 
 		assert.Eventually(t, func() bool {
 			return ex.findClient(key) != nil

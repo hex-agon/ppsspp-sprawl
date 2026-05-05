@@ -35,8 +35,9 @@ func (w *SliceWriter) Bytes(v []byte) {
 	w.pos += len(v)
 }
 
-func (w *SliceWriter) String8(s string) {
-	w.Uint8(uint8(len(s)))
-	copy(w.dst[w.pos:], s)
-	w.pos += len(s)
+func (w *SliceWriter) Skip(n int) {
+	for i := 0; i < n; i++ {
+		w.dst[w.pos+i] = 0
+	}
+	w.pos += n
 }
