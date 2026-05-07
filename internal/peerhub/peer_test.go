@@ -54,11 +54,9 @@ func TestPeer(t *testing.T) {
 		defer func() { assert.NoError(t, srvConnB.Close()) }()
 		defer func() { assert.NoError(t, clientConnB.Close()) }()
 
-		ctxA, cancelA := context.WithCancel(ctx)
-		peerA := registerPeer(ctxA, cancelA, hub, clientConnA, macA, 1001, peerTypeConnecting)
+		peerA := hub.registerPeer(ctx, clientConnA, macA, 1001, peerTypeConnecting)
 
-		ctxB, cancelB := context.WithCancel(ctx)
-		peerB := registerPeer(ctxB, cancelB, hub, clientConnB, macB, 1002, peerTypeConnecting)
+		peerB := hub.registerPeer(ctx, clientConnB, macB, 1002, peerTypeConnecting)
 
 		peerA.peer = peerB
 		peerB.peer = peerA
@@ -96,11 +94,9 @@ func TestPeer(t *testing.T) {
 		defer func() { _ = srvConnB.Close() }()
 		defer func() { _ = clientConnB.Close() }()
 
-		ctxA, cancelA := context.WithCancel(ctx)
-		peerA := registerPeer(ctxA, cancelA, hub, clientConnA, macA, 1001, peerTypeConnecting)
+		peerA := hub.registerPeer(ctx, clientConnA, macA, 1001, peerTypeConnecting)
 
-		ctxB, cancelB := context.WithCancel(ctx)
-		peerB := registerPeer(ctxB, cancelB, hub, clientConnB, macB, 1002, peerTypeConnecting)
+		peerB := hub.registerPeer(ctx, clientConnB, macB, 1002, peerTypeConnecting)
 
 		peerA.peer = peerB
 		peerB.peer = peerA

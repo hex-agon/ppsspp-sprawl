@@ -106,9 +106,7 @@ func TestHub(t *testing.T) {
 			defer func() { assert.NoError(t, srvConnTarget.Close()) }()
 			defer func() { assert.NoError(t, clientConnT.Close()) }()
 
-			targetCtx, targetCancel := context.WithCancel(ctx)
-
-			targetPeer := registerPeer(targetCtx, targetCancel, hub, clientConnT, targetMac, targetPort, peerTypeConnecting)
+			targetPeer := hub.registerPeer(ctx, clientConnT, targetMac, targetPort, peerTypeConnecting)
 
 			require.Eventually(t, func() bool {
 				return hub.findConnectedPeer(targetPeer.key) != nil
@@ -204,8 +202,7 @@ func TestHub(t *testing.T) {
 			srvConn, clientConn := net.Pipe()
 			defer func() { assert.NoError(t, srvConn.Close()) }()
 
-			peerCtx, peerCancelFunc := context.WithCancel(ctx)
-			p := registerPeer(peerCtx, peerCancelFunc, hub, clientConn, mac, 1001, peerTypeListening)
+			p := hub.registerPeer(ctx, clientConn, mac, 1001, peerTypeListening)
 
 			require.Eventually(t, func() bool {
 				return hub.findListeningPeer(p.key) != nil
@@ -229,8 +226,7 @@ func TestHub(t *testing.T) {
 			srvConn, clientConn := net.Pipe()
 			defer func() { assert.NoError(t, srvConn.Close()) }()
 
-			peerCtx, peerCancel := context.WithCancel(ctx)
-			p := registerPeer(peerCtx, peerCancel, hub, clientConn, mac, 1001, peerTypeConnecting)
+			p := hub.registerPeer(ctx, clientConn, mac, 1001, peerTypeConnecting)
 
 			require.Eventually(t, func() bool {
 				return hub.findConnectedPeer(key) != nil

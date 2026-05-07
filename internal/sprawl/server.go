@@ -155,6 +155,8 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 		Msg("[relay] received init packet")
 
 	switch initPktType {
+	// TODO: should not pass the srv.ctx here, the hub/exchange ctx already inherits from it
+	// TODO: These handlers should be member funcs of exchange/peerhub
 	case initTypePdp:
 		srv.exchange.RegisterClient(srv.ctx, conn, srcAddr, srcPort)
 	case initTypeP2pListen:

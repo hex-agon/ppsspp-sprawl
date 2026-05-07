@@ -13,13 +13,11 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 const p2pHeaderSize = 4
 const p2pMaxPacketSize = 10 * 1024
 
-const readPacketTimeout = 30 * time.Second
 const writePacketTimeout = 2 * time.Second
 
 type peerType int8
@@ -66,48 +64,15 @@ type peer struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 	closeOnce sync.Once
-	txQueue   chan []byte
+	txQueue   chan p2pOutboundPacket
 	macAddr   pspnet.MacAddr
 	port      uint16
 	key       peerKey
 	peerType  peerType
 	peer      *peer
 	logger    zerolog.Logger
-}
-
-func registerPeer(ctx context.Context, cancelFunc context.CancelFunc, hub *PeerHub, conn net.Conn, macAddr pspnet.MacAddr, port uint16, pType peerType) *peer {
-	p := &peer{
-		hub:       hub,
-		conn:      conn,
-		ctx:       ctx,
-		ctxCancel: cancelFunc,
-		closeOnce: sync.Once{},
-		txQueue:   make(chan []byte, 16),
-		macAddr:   macAddr,
-		port:      port,
-		key:       newPeerKey(macAddr, port),
-		peerType:  pType,
-		logger: log.With().
-			Str("ip", conn.RemoteAddr().String()).
-			Str("mac", macAddr.String()).
-			Str("peerType", pType.String()).
-			Logger(),
-	}
-
-	if pType == peerTypeListening {
-		hub.registerListening <- p
-	} else {
-		hub.registerConnected <- p
-	}
-
-	go p.reader()
-	go p.writer()
-
-	return p
-}
-
-func (p *peer) remoteAddr() string {
-	return p.conn.RemoteAddr().String()
+	encoder   *encoder
+	decoder   *decoder
 }
 
 func (p *peer) close() {
@@ -130,29 +95,14 @@ func (p *peer) close() {
 	})
 }
 
-func (p *peer) read(buf []byte) error {
-	_, err := io.ReadFull(p.conn, buf)
-	return err
-}
-
-func (p *peer) readWithTimeout(buf []byte, timeout time.Duration) error {
-	if err := p.conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return err
-	}
-	_, err := io.ReadFull(p.conn, buf)
-	_ = p.conn.SetReadDeadline(time.Time{})
-
-	return err
-}
-
-func (p *peer) write(buf []byte, timeout time.Duration) error {
+func (p *peer) write(pkt p2pOutboundPacket, timeout time.Duration) error {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
 	select {
 	case <-p.ctx.Done():
 		return ErrPeerDisconnected
-	case p.txQueue <- buf:
+	case p.txQueue <- pkt:
 		return nil
 	case <-timer.C:
 		return errors.New("tx queue full: timeout exceeded")
@@ -160,44 +110,27 @@ func (p *peer) write(buf []byte, timeout time.Duration) error {
 }
 
 func (p *peer) reader() {
-	headerBuf := make([]byte, p2pHeaderSize)
-
 	for {
-		if err := p.read(headerBuf); err != nil {
+		pkt, err := p.decoder.next()
+		if err != nil {
 			if err != io.EOF {
 				p.logger.Warn().Err(err).Msg("[relay] reader: client read error")
 			}
 			p.close()
 			return
 		}
-		packetSize := binary.LittleEndian.Uint32(headerBuf[:])
-
-		if packetSize > p2pMaxPacketSize {
-			p.logger.Warn().Msg("[relay] reader: client packet size exceeds limit")
-			p.close()
-			return
-		}
-		packetBuf := make([]byte, p2pHeaderSize+packetSize)
-		copy(packetBuf[0:4], headerBuf[:]) // copy the packet size
-
-		if err := p.readWithTimeout(packetBuf[p2pHeaderSize:], readPacketTimeout); err != nil {
-			p.logger.Warn().Err(err).Msg("[relay] reader: client read timeout")
-			p.close()
-			return
-		}
 
 		if p.peer == nil {
 			p.logger.Warn().Msg("[relay] reader: peer has no peer, discarding packet")
-			break
+			continue
 		}
 
-		if err := p.peer.write(packetBuf, writePacketTimeout); err != nil {
+		if err := p.peer.write(pkt, writePacketTimeout); err != nil {
 			if !errors.Is(err, ErrPeerDisconnected) {
 				p.logger.Warn().Err(err).Msg("[relay] failed to write packet to peer")
 			}
 			p.close()
 		}
-		peersRxBytes.Add(float64(len(packetBuf)))
 	}
 }
 
@@ -207,11 +140,10 @@ func (p *peer) writer() {
 		case <-p.ctx.Done():
 			p.logger.Debug().Msg("[relay] writer: context cancelled")
 			return
-		case payload := <-p.txQueue:
-			if _, err := p.conn.Write(payload); err != nil {
+		case pkt := <-p.txQueue:
+			if err := p.encoder.writeAndFlush(pkt); err != nil {
 				p.logger.Warn().Err(err).Msg("[relay] writer: failed to write data to the client")
 			}
-			peersTxBytes.Add(float64(len(payload)))
 		}
 	}
 }

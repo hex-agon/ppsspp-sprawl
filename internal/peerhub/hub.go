@@ -2,7 +2,6 @@ package peerhub
 
 import (
 	"context"
-	"encoding/hex"
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
@@ -134,10 +133,42 @@ func (hub *PeerHub) houseKeeper() {
 	}
 }
 
-func HandleListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
+func (hub *PeerHub) registerPeer(ctx context.Context, conn net.Conn, macAddr pspnet.MacAddr, port uint16, pType peerType) *peer {
 	ctx, cancelFunc := context.WithCancel(ctx)
+	p := &peer{
+		hub:       hub,
+		conn:      conn,
+		ctx:       ctx,
+		ctxCancel: cancelFunc,
+		closeOnce: sync.Once{},
+		txQueue:   make(chan p2pOutboundPacket, 16),
+		macAddr:   macAddr,
+		port:      port,
+		key:       newPeerKey(macAddr, port),
+		peerType:  pType,
+		logger: log.With().
+			Str("ip", conn.RemoteAddr().String()).
+			Str("mac", macAddr.String()).
+			Str("peerType", pType.String()).
+			Logger(),
+		encoder: newEncoder(conn),
+		decoder: newDecoder(conn),
+	}
 
-	p := registerPeer(ctx, cancelFunc, hub, conn, macAddr, port, peerTypeListening)
+	if pType == peerTypeListening {
+		hub.registerListening <- p
+	} else {
+		hub.registerConnected <- p
+	}
+
+	go p.reader()
+	go p.writer()
+
+	return p
+}
+
+func HandleListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
+	p := hub.registerPeer(ctx, conn, macAddr, port, peerTypeListening)
 
 	p.logger.Info().Msg("[relay] registered a new listening peer to the hub")
 }
@@ -178,23 +209,25 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 		return
 	}
 
-	log.Info().
+	log.Debug().
 		Str("ip", conn.RemoteAddr().String()).
 		Str("src-key", srcPeerKey.String()).
 		Str("target-key", targetPeerKey.String()).
 		Msg("[relay] target peer found to connect")
 
-	log.Debug().Msgf("[relay] notifying %v that it should connect to %v on port %d", hex.EncodeToString(targetPeer.macAddr[:]), hex.EncodeToString(srcAddr[:]), srcPort)
-	targetPeer.txQueue <- srcPeerKey.encode()
+	log.Debug().Msgf("[relay] notifying %v that it should connect to %v on port %d", targetPeer.macAddr.String(), srcAddr.String(), srcPort)
+	peerAnnouncePkt := &peerAnnouncePacket{
+		macAddr: srcAddr,
+		port:    srcPort,
+	}
+	if err := targetPeer.write(peerAnnouncePkt, time.Second*1); err != nil {
+		targetPeer.logger.Err(err).Msg("[relay] failed to write peer announce packet")
+		go connCloser(conn)
+		return
+	}
 
-	ctx, cancelFunc := context.WithCancel(ctx)
-
-	p := registerPeer(ctx, cancelFunc, hub, conn, srcAddr, srcPort, peerTypeConnecting)
-
-	log.Info().
-		Str("ip", p.remoteAddr()).
-		Str("key", p.key.String()).
-		Msg("[relay] registered a new connected peer to the hub")
+	p := hub.registerPeer(ctx, conn, srcAddr, srcPort, peerTypeConnecting)
+	p.logger.Info().Msg("[relay] registered a new connected peer to the hub")
 }
 
 func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
@@ -231,18 +264,25 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 		go connCloser(conn)
 		return
 	}
-	ctx, cancelFunc := context.WithCancel(ctx)
-
-	p := registerPeer(ctx, cancelFunc, hub, conn, srcAddr, srcPort, peerTypeConnecting)
+	p := hub.registerPeer(ctx, conn, srcAddr, srcPort, peerTypeConnecting)
 	p.peer = targetPeer
 	targetPeer.peer = p
 
-	if err := p.write(targetPeerKey.encode(), writePacketTimeout); err != nil {
+	announceTargetPeer := &peerAnnouncePacket{
+		macAddr: targetAddr,
+		port:    targetPort,
+	}
+	if err := p.write(announceTargetPeer, writePacketTimeout); err != nil {
 		log.Warn().Err(err).Msg("[relay] failed to write accept conn packet to peer")
 		hub.unregister <- p
 		return
 	}
-	if err := targetPeer.write(srcPeerKey.encode(), writePacketTimeout); err != nil {
+
+	announceSrcPeer := &peerAnnouncePacket{
+		macAddr: srcAddr,
+		port:    srcPort,
+	}
+	if err := targetPeer.write(announceSrcPeer, writePacketTimeout); err != nil {
 		log.Warn().Err(err).Msg("[relay] failed to write accept conn packet to peer")
 		hub.unregister <- p
 		return
