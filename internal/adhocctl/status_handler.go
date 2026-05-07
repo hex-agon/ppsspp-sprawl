@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"sort"
 
 	"github.com/rs/zerolog/log"
 )
@@ -17,6 +18,9 @@ var statusTemplate = template.Must(template.ParseFS(statusTemplateFS, "status.go
 func StatusHandler(srv Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		titles := srv.GetActiveTitles()
+		sort.Slice(titles, func(i, j int) bool {
+			return titles[i].TitleID < titles[j].TitleID
+		})
 
 		format := r.URL.Query().Get("format")
 		switch format {

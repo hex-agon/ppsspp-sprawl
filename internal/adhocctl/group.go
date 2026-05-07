@@ -45,6 +45,7 @@ type group struct {
 	founderMacAddr pspnet.MacAddr
 	srv            *ctlServer
 	clients        map[*client]struct{}
+	createdAt      int64
 }
 
 func (g *group) add(c *client) error {

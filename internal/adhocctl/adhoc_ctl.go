@@ -18,8 +18,9 @@ const loginPacketTimeout = 5 * time.Second
 const writePacketTimeout = 5 * time.Second
 
 type GroupStatus struct {
-	ID      string   `json:"id"`
-	Players []string `json:"players"`
+	ID        string   `json:"id"`
+	Players   []string `json:"players"`
+	CreatedAt int64    `json:"created_at"`
 }
 
 type TitleStatus struct {
@@ -119,8 +120,9 @@ func (srv *ctlServer) GetActiveTitles() []TitleStatus {
 		for gid, g := range groups {
 			g.RLock()
 			groupStatus := GroupStatus{
-				ID:      gid.String(),
-				Players: make([]string, 0, len(g.clients)),
+				ID:        gid.String(),
+				Players:   make([]string, 0, len(g.clients)),
+				CreatedAt: g.createdAt,
 			}
 			for c := range g.clients {
 				groupStatus.Players = append(groupStatus.Players, c.name.String())
@@ -191,6 +193,7 @@ func (srv *ctlServer) joinGroup(cli *client, tid titledb.TitleId, id groupId) er
 			tid:            tid,
 			founderMacAddr: cli.macAddr,
 			clients:        make(map[*client]struct{}),
+			createdAt:      time.Now().Unix(),
 		}
 		if srv.groups[tid] == nil {
 			srv.groups[tid] = make(map[groupId]*group)

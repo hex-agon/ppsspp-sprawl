@@ -151,11 +151,22 @@
                 border-left: 3px solid #007acc;
             }
 
+            .group-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 5px;
+            }
+
             .group-id {
                 font-weight: bold;
-                margin-bottom: 5px;
                 font-size: 0.9rem;
                 color: #00aaff;
+            }
+
+            .group-uptime {
+                font-size: 0.8rem;
+                color: #888888;
             }
 
             .player-list {
@@ -216,6 +227,29 @@
                         btn.closest('.title-card').classList.remove('open');
                     });
                 });
+
+                function updateUptimes() {
+                    const now = Math.floor(Date.now() / 1000);
+                    document.querySelectorAll('.group-item').forEach(item => {
+                        const createdAt = parseInt(item.dataset.createdAt);
+                        if (isNaN(createdAt)) return;
+
+                        const delta = now - createdAt;
+                        const element = item.querySelector('.group-uptime');
+                        if (!element) return;
+
+                        if (delta < 0) return;
+
+                        const hours = String(Math.floor(delta / 3600)).padStart(2, '0');
+                        const minutes = String(Math.floor((delta % 3600) / 60)).padStart(2, '0');
+                        const seconds = String(delta % 60).padStart(2, '0');
+
+                        element.textContent = `${hours}:${minutes}:${seconds}`;
+                    });
+                }
+
+                updateUptimes();
+                setInterval(updateUptimes, 1000);
             });
         </script>
     </head>
@@ -229,7 +263,8 @@
             {{range .Titles}}
                 <div class="title-card">
                     <div class="title-header">
-                        <div class="title-image" style="background-image: url('https://static.sprawl-relay.link/titledb/{{.TitleID}}.png'), url('https://static.sprawl-relay.link/titledb/placeholder.jpg');"></div>
+                        <div class="title-image"
+                             style="background-image: url('https://static.sprawl-relay.link/titledb/{{.TitleID}}.png'), url('https://static.sprawl-relay.link/titledb/placeholder.jpg');"></div>
                         <div class="title-info">
                             <p class="title-name">{{if .Name}}{{.Name}}{{else}}Unknown Title{{end}}</p>
                             <p class="title-meta">{{.TitleID}} | {{.TitleRegion}} | {{.PlayerCount}} Players</p>
@@ -239,13 +274,17 @@
                         <div class="overlay-content">
                             <span class="close-button">&times;</span>
                             <h2 class="overlay-title">{{if .Name}}{{.Name}}{{else}}Unknown Title{{end}}</h2>
-                            <p class="title-meta overlay-meta">{{.TitleID}} | {{.TitleRegion}} | {{.PlayerCount}} Players</p>
-                            
+                            <p class="title-meta overlay-meta">{{.TitleID}} | {{.TitleRegion}} | {{.PlayerCount}}
+                                Players</p>
+
                             <div class="groups-list">
                                 <h4 class="groups-list-title">Active Groups ({{len .Groups}}):</h4>
                                 {{range .Groups}}
-                                    <div class="group-item">
-                                        <div class="group-id">Group {{.ID}}</div>
+                                    <div class="group-item" data-created-at="{{.CreatedAt}}">
+                                        <div class="group-header">
+                                            <div class="group-id">Group {{.ID}}</div>
+                                            <div class="group-uptime"></div>
+                                        </div>
                                         <ul class="player-list">
                                             {{range .Players}}
                                                 <li>{{.}}</li>
