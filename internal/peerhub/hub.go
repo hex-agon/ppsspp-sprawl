@@ -66,9 +66,9 @@ func NewHub(ctx context.Context) *PeerHub {
 		ctx:               ctx,
 		listeningPeers:    make(map[peerKey]*peer),
 		connectedPeers:    make(map[peerKey]*peer),
-		registerListening: make(chan *peer, 16),
-		registerConnected: make(chan *peer, 16),
-		unregister:        make(chan *peer, 16),
+		registerListening: make(chan *peer, 32),
+		registerConnected: make(chan *peer, 32),
+		unregister:        make(chan *peer, 32),
 	}
 
 	go hub.houseKeeper()
@@ -97,6 +97,7 @@ func (hub *PeerHub) houseKeeper() {
 			if _, ok := hub.listeningPeers[p.key]; ok {
 				p.logger.Warn().Msg("[relay] attempted to register duplicate listening peer")
 				p.close()
+				hub.Unlock()
 				continue
 			}
 			hub.listeningPeers[p.key] = p
@@ -107,6 +108,7 @@ func (hub *PeerHub) houseKeeper() {
 			if _, ok := hub.connectedPeers[p.key]; ok {
 				p.logger.Warn().Msg("[relay] attempted to register duplicate connected peer")
 				p.close()
+				hub.Unlock()
 				continue
 			}
 			hub.connectedPeers[p.key] = p
