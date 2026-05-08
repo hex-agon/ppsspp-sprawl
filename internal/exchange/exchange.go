@@ -97,15 +97,15 @@ func (ex *Exchange) houseKeeper() {
 }
 
 // RegisterClient registers a new client, initializes its context, binds it to a specific exchange, and starts reader and writer goroutines for communication.
-func (ex *Exchange) RegisterClient(ctx context.Context, conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
-	ctx, cancelFunc := context.WithCancel(ctx)
+func (ex *Exchange) RegisterClient(conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
+	cancellableCtx, cancelFunc := context.WithCancel(ex.ctx)
 
 	c := &client{
 		exchange:   ex,
 		conn:       conn,
 		decoder:    newDecoder(conn),
 		encoder:    newEncoder(conn, pdpHeaderSize+pdpMaxPacketSize),
-		ctx:        ctx,
+		ctx:        cancellableCtx,
 		ctxCancel:  cancelFunc,
 		closeOnce:  sync.Once{},
 		txQueue:    make(chan *pdpPacket, 16),

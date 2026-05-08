@@ -2,15 +2,14 @@ package sprawl
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"sprawl/internal/exchange"
+	"sprawl/internal/packet"
 	"sprawl/internal/peerhub"
-	"sprawl/internal/pspnet"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -121,7 +120,7 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 				Err(err).
 				Msg("[relay] failed to close connection")
 		}
-		log.Debug().Str("ip", conn.RemoteAddr().String()).Msg("closed connection")
+		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("closed connection")
 	}
 
 	log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] accepted new connection")
@@ -137,13 +136,14 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 	}
 	_ = conn.SetReadDeadline(time.Time{})
 
-	initPktType := initType(binary.LittleEndian.Uint32(initBuf[0:4]))
-	srcAddr := pspnet.MacAddr(initBuf[4:10])
-	// padding
-	srcPort := binary.LittleEndian.Uint16(initBuf[12:14])
-	dstAddr := pspnet.MacAddr(initBuf[14:20])
-	// padding
-	dstPort := binary.LittleEndian.Uint16(initBuf[22:24])
+	r := packet.NewSliceReader(initBuf)
+	initPktType := initType(r.Uint32())
+	srcAddr := r.MacAddr()
+	r.Skip(2) // padding
+	srcPort := r.Uint16()
+	dstAddr := r.MacAddr()
+	r.Skip(2) // padding
+	dstPort := r.Uint16()
 
 	log.Debug().
 		Str("ip", conn.RemoteAddr().String()).
@@ -155,16 +155,14 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 		Msg("[relay] received init packet")
 
 	switch initPktType {
-	// TODO: should not pass the srv.ctx here, the hub/exchange ctx already inherits from it
-	// TODO: These handlers should be member funcs of exchange/peerhub
 	case initTypePdp:
-		srv.exchange.RegisterClient(srv.ctx, conn, srcAddr, srcPort)
+		srv.exchange.RegisterClient(conn, srcAddr, srcPort)
 	case initTypeP2pListen:
-		peerhub.HandleListeningPeer(srv.ctx, srv.hub, conn, srcAddr, srcPort)
+		srv.hub.HandleListeningPeer(conn, srcAddr, srcPort)
 	case initTypeP2pConnect:
-		peerhub.HandleConnectingPeer(srv.ctx, srv.hub, conn, srcAddr, srcPort, dstAddr, dstPort)
+		srv.hub.HandleConnectingPeer(conn, srcAddr, srcPort, dstAddr, dstPort)
 	case initTypeP2pAccept:
-		peerhub.HandleAcceptingPeer(srv.ctx, srv.hub, conn, srcAddr, srcPort, dstAddr, dstPort)
+		srv.hub.HandleAcceptingPeer(conn, srcAddr, srcPort, dstAddr, dstPort)
 	default:
 		log.Error().Any("init-type", initPktType).Msg("unsupported init type")
 		go connCloser(conn)

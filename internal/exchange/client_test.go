@@ -53,7 +53,7 @@ func TestClient(t *testing.T) {
 		clientPort := uint16(1001)
 		key := newRoutingKey(clientMac, clientPort)
 
-		ex.RegisterClient(ctx, clientConn, clientMac, clientPort)
+		ex.RegisterClient(clientConn, clientMac, clientPort)
 
 		assert.Eventually(t, func() bool {
 			return ex.findClient(key) != nil
@@ -84,7 +84,7 @@ func TestClient(t *testing.T) {
 		clientPort := uint16(1001)
 		key := newRoutingKey(clientMac, clientPort)
 
-		ex.RegisterClient(ctx, clientConn, clientMac, clientPort)
+		ex.RegisterClient(clientConn, clientMac, clientPort)
 
 		assert.Eventually(t, func() bool {
 			return ex.findClient(key) != nil

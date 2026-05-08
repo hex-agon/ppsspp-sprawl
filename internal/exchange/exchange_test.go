@@ -37,8 +37,8 @@ func TestExchange(t *testing.T) {
 		clientMacB := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 		clientPortB := uint16(1002)
 
-		ex.RegisterClient(ctx, clientConnA, clientMacA, clientPortA)
-		ex.RegisterClient(ctx, clientConnB, clientMacB, clientPortB)
+		ex.RegisterClient(clientConnA, clientMacA, clientPortA)
+		ex.RegisterClient(clientConnB, clientMacB, clientPortB)
 
 		// wait for client registration
 		assert.Eventually(t, func() bool {

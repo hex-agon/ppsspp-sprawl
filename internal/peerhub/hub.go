@@ -133,8 +133,8 @@ func (hub *PeerHub) houseKeeper() {
 	}
 }
 
-func (hub *PeerHub) registerPeer(ctx context.Context, conn net.Conn, macAddr pspnet.MacAddr, port uint16, pType peerType) *peer {
-	ctx, cancelFunc := context.WithCancel(ctx)
+func (hub *PeerHub) registerPeer(conn net.Conn, macAddr pspnet.MacAddr, port uint16, pType peerType) *peer {
+	ctx, cancelFunc := context.WithCancel(hub.ctx)
 	p := &peer{
 		hub:       hub,
 		conn:      conn,
@@ -167,13 +167,13 @@ func (hub *PeerHub) registerPeer(ctx context.Context, conn net.Conn, macAddr psp
 	return p
 }
 
-func HandleListeningPeer(ctx context.Context, hub *PeerHub, conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
-	p := hub.registerPeer(ctx, conn, macAddr, port, peerTypeListening)
+func (hub *PeerHub) HandleListeningPeer(conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
+	p := hub.registerPeer(conn, macAddr, port, peerTypeListening)
 
 	p.logger.Info().Msg("[relay] registered a new listening peer to the hub")
 }
 
-func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
+func (hub *PeerHub) HandleConnectingPeer(conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
 	connCloser := func(conn net.Conn) {
 		if err := conn.Close(); err != nil {
 			log.Warn().
@@ -226,11 +226,11 @@ func HandleConnectingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcA
 		return
 	}
 
-	p := hub.registerPeer(ctx, conn, srcAddr, srcPort, peerTypeConnecting)
+	p := hub.registerPeer(conn, srcAddr, srcPort, peerTypeConnecting)
 	p.logger.Info().Msg("[relay] registered a new connected peer to the hub")
 }
 
-func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
+func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
 	connCloser := func(conn net.Conn) {
 		if err := conn.Close(); err != nil {
 			log.Warn().
@@ -264,7 +264,7 @@ func HandleAcceptingPeer(ctx context.Context, hub *PeerHub, conn net.Conn, srcAd
 		go connCloser(conn)
 		return
 	}
-	p := hub.registerPeer(ctx, conn, srcAddr, srcPort, peerTypeConnecting)
+	p := hub.registerPeer(conn, srcAddr, srcPort, peerTypeConnecting)
 	p.peer = targetPeer
 	targetPeer.peer = p
 

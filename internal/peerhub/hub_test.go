@@ -29,7 +29,7 @@ func TestHub(t *testing.T) {
 		port := uint16(1001)
 		key := newPeerKey(macAddr, port)
 
-		HandleListeningPeer(ctx, hub, clientConn, macAddr, port)
+		hub.HandleListeningPeer(clientConn, macAddr, port)
 
 		require.Eventually(t, func() bool {
 			return hub.findListeningPeer(key) != nil
@@ -49,7 +49,7 @@ func TestHub(t *testing.T) {
 			defer func() { assert.NoError(t, srvConnT.Close()) }()
 			defer func() { assert.NoError(t, clientConnT.Close()) }()
 
-			HandleListeningPeer(ctx, hub, clientConnT, targetMac, targetPort)
+			hub.HandleListeningPeer(clientConnT, targetMac, targetPort)
 
 			srcMac := pspnet.MustParseMacAddr("00:01:02:03:04:06")
 			srcPort := uint16(1001)
@@ -57,7 +57,7 @@ func TestHub(t *testing.T) {
 			defer func() { assert.NoError(t, srvConnS.Close()) }()
 			defer func() { assert.NoError(t, clientConnS.Close()) }()
 
-			HandleConnectingPeer(ctx, hub, clientConnS, srcMac, srcPort, targetMac, targetPort)
+			hub.HandleConnectingPeer(clientConnS, srcMac, srcPort, targetMac, targetPort)
 
 			receivedKey := make([]byte, 10)
 			_ = srvConnT.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
@@ -85,7 +85,7 @@ func TestHub(t *testing.T) {
 
 			srvConn, clientConn := net.Pipe()
 
-			HandleConnectingPeer(ctx, hub, clientConn, srcMac, srcPort, targetMac, targetPort)
+			hub.HandleConnectingPeer(clientConn, srcMac, srcPort, targetMac, targetPort)
 
 			_ = srvConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 			_, err := srvConn.Read([]byte{})
@@ -106,7 +106,7 @@ func TestHub(t *testing.T) {
 			defer func() { assert.NoError(t, srvConnTarget.Close()) }()
 			defer func() { assert.NoError(t, clientConnT.Close()) }()
 
-			targetPeer := hub.registerPeer(ctx, clientConnT, targetMac, targetPort, peerTypeConnecting)
+			targetPeer := hub.registerPeer(clientConnT, targetMac, targetPort, peerTypeConnecting)
 
 			require.Eventually(t, func() bool {
 				return hub.findConnectedPeer(targetPeer.key) != nil
@@ -119,7 +119,7 @@ func TestHub(t *testing.T) {
 			defer func() { assert.NoError(t, srvConnSrc.Close()) }()
 			defer func() { assert.NoError(t, clientConnSrc.Close()) }()
 
-			HandleAcceptingPeer(ctx, hub, clientConnSrc, srcMac, srcPort, targetMac, targetPort)
+			hub.HandleAcceptingPeer(clientConnSrc, srcMac, srcPort, targetMac, targetPort)
 
 			receivedSrcKey := make([]byte, 10)
 			_ = srvConnTarget.SetReadDeadline(time.Now().Add(1 * time.Second))
@@ -153,7 +153,7 @@ func TestHub(t *testing.T) {
 
 			srvConn, clientConn := net.Pipe()
 
-			HandleAcceptingPeer(ctx, hub, clientConn, srcMac, srcPort, targetMac, targetPort)
+			hub.HandleAcceptingPeer(clientConn, srcMac, srcPort, targetMac, targetPort)
 
 			_ = srvConn.SetReadDeadline(time.Now().Add(1 * time.Second))
 			_, err := srvConn.Read([]byte{})
@@ -182,7 +182,7 @@ func TestHub(t *testing.T) {
 
 			srvConn, clientConn := net.Pipe()
 
-			HandleAcceptingPeer(ctx, hub, clientConn, srcMac, srcPort, targetMac, targetPort)
+			hub.HandleAcceptingPeer(clientConn, srcMac, srcPort, targetMac, targetPort)
 
 			_ = srvConn.SetReadDeadline(time.Now().Add(1 * time.Second))
 			_, err := srvConn.Read([]byte{})
@@ -202,7 +202,7 @@ func TestHub(t *testing.T) {
 			srvConn, clientConn := net.Pipe()
 			defer func() { assert.NoError(t, srvConn.Close()) }()
 
-			p := hub.registerPeer(ctx, clientConn, mac, 1001, peerTypeListening)
+			p := hub.registerPeer(clientConn, mac, 1001, peerTypeListening)
 
 			require.Eventually(t, func() bool {
 				return hub.findListeningPeer(p.key) != nil
@@ -226,7 +226,7 @@ func TestHub(t *testing.T) {
 			srvConn, clientConn := net.Pipe()
 			defer func() { assert.NoError(t, srvConn.Close()) }()
 
-			p := hub.registerPeer(ctx, clientConn, mac, 1001, peerTypeConnecting)
+			p := hub.registerPeer(clientConn, mac, 1001, peerTypeConnecting)
 
 			require.Eventually(t, func() bool {
 				return hub.findConnectedPeer(key) != nil
