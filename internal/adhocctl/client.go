@@ -48,12 +48,50 @@ func (c *client) close() {
 		c.server.unregisterClient <- c
 
 		if c.group != nil {
-			// Trigger a disconnect broadcast
+			broadcastDisconnect(c)
 			c.group.remove(c)
 			c.group = nil
 		}
 		c.logger.Info().Msg("[ctl] client disconnected")
 	})
+}
+
+func broadcastDisconnect(c *client) {
+	// Since the protocol disconnects by ipv4 addr, we need to do a small workaround, similar to what aemu does
+	sameIpCount := 0
+	ipAddr := c.remoteAddr4()
+	// we're gonna have to disconnect everyone that has the same ipv4 addr then reconnect the remaining
+	c.group.forEach(func(other *client) {
+		if other.remoteAddr4() == ipAddr {
+			sameIpCount++
+		}
+	})
+	pkt := &s2cClientDisconnected{ipAddr: ipAddr}
+
+	// repeat broadcast for disconnecting all the clients under the same ipv4
+	for i := 0; i < sameIpCount; i++ {
+		c.group.broadcast(pkt, func(other *client) bool {
+			return other != c
+		})
+	}
+
+	// broadcast reconnects for all but client c
+	var clientsToNotify []*client
+	c.group.forEach(func(other *client) {
+		if other.remoteAddr4() == ipAddr {
+			clientsToNotify = append(clientsToNotify, other)
+		}
+	})
+
+	for _, other := range clientsToNotify {
+		other.group.broadcast(&s2cClientConnected{
+			displayName: other.name,
+			macAddr:     other.macAddr,
+			ipAddr:      other.remoteAddr4(),
+		}, func(c *client) bool {
+			return c != other
+		})
+	}
 }
 
 func (c *client) write(packet packet.OutboundPacket, timeout time.Duration) error {
@@ -166,11 +204,9 @@ func handleDisconnectPacket(c *client) error {
 	}
 	gid := g.id
 
+	broadcastDisconnect(c)
 	g.remove(c)
 	c.group = nil
-
-	// TODO: Fix the edge case where there's multiple people under the same ipv4 addr, need to disconnect all (repeat the message by the count of same ip addr4) and then reconnect them
-	g.broadcastAll(&s2cDisconnected{ipAddr: c.remoteAddr4()})
 
 	c.logger.Info().Msgf("[ctl] disconnect: disconnected client from group %s", gid.String())
 	return nil

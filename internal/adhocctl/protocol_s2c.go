@@ -82,15 +82,15 @@ func (s *s2cClientConnected) WriteTo(dst []byte) (int, error) {
 	return writer.Pos(), nil
 }
 
-type s2cDisconnected struct {
+type s2cClientDisconnected struct {
 	ipAddr uint32
 }
 
-func (s *s2cDisconnected) Type() packet.OutboundPacketType {
+func (s *s2cClientDisconnected) Type() packet.OutboundPacketType {
 	return outboundPacketClientDisconnected
 }
 
-func (s *s2cDisconnected) WriteTo(dst []byte) (int, error) {
+func (s *s2cClientDisconnected) WriteTo(dst []byte) (int, error) {
 	writer := packet.NewSliceWriter(dst)
 	writer.Uint32(s.ipAddr)
 	return writer.Pos(), nil
