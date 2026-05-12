@@ -35,6 +35,7 @@ func (d *decoder) next() (*p2pPacket, error) {
 	if _, err := io.ReadFull(d.reader, payload); err != nil {
 		return nil, err
 	}
+	packetSizeHistogram.Observe(float64(p2pHeaderSize + packetSize))
 	peersRxBytes.Add(float64(p2pHeaderSize + packetSize))
 	return &p2pPacket{payload: payload}, nil
 }

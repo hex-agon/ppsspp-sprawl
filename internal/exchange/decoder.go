@@ -40,6 +40,7 @@ func (d *decoder) next() (*pdpPacket, error) {
 	if _, err := io.ReadFull(d.reader, payload); err != nil {
 		return nil, err
 	}
+	packetSizeHistogram.Observe(float64(pdpHeaderSize + packetSize))
 	return &pdpPacket{
 		macAddr:    targetMacAddr,
 		port:       targetPort,
