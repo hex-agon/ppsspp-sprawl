@@ -93,12 +93,3 @@ func (g *group) broadcast(packet packet.OutboundPacket, filter func(*client) boo
 		}
 	})
 }
-
-func (g *group) broadcastAll(packet packet.OutboundPacket) {
-	g.forEach(func(c *client) {
-		if err := c.write(packet, writePacketTimeout); err != nil {
-			c.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
-			c.close()
-		}
-	})
-}
