@@ -129,7 +129,7 @@ func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16,
 	if c := ex.findClient(key); c != nil {
 		if err := c.write(packet); err != nil {
 			c.logger.Warn().Err(err).Msg("[relay] failed to write packet")
-			ex.unregister <- c
+			c.close()
 		}
 		return
 	}
