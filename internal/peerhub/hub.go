@@ -222,7 +222,7 @@ func (hub *PeerHub) HandleConnectingPeer(conn net.Conn, srcAddr pspnet.MacAddr, 
 		macAddr: srcAddr,
 		port:    srcPort,
 	}
-	if err := targetPeer.write(peerAnnouncePkt, time.Second*1); err != nil {
+	if err := targetPeer.write(peerAnnouncePkt); err != nil {
 		targetPeer.logger.Err(err).Msg("[relay] failed to write peer announce packet")
 		go connCloser(conn)
 		return
@@ -274,7 +274,7 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 		macAddr: targetAddr,
 		port:    targetPort,
 	}
-	if err := p.write(announceTargetPeer, writePacketTimeout); err != nil {
+	if err := p.write(announceTargetPeer); err != nil {
 		log.Warn().Err(err).Msg("[relay] failed to write accept conn packet to peer")
 		hub.unregister <- p
 		return
@@ -284,7 +284,7 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 		macAddr: srcAddr,
 		port:    srcPort,
 	}
-	if err := targetPeer.write(announceSrcPeer, writePacketTimeout); err != nil {
+	if err := targetPeer.write(announceSrcPeer); err != nil {
 		log.Warn().Err(err).Msg("[relay] failed to write accept conn packet to peer")
 		hub.unregister <- p
 		return

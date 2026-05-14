@@ -5,15 +5,12 @@ import (
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog/log"
 )
 
 const pdpHeaderSize = 14
 const pdpMaxPacketSize = 4 * 1024
-
-const writePacketTimeout = 2 * time.Second
 
 // Exchange represents a hub for managing client connections and routing messages between them.
 type Exchange struct {
@@ -130,7 +127,7 @@ func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16,
 	key := newRoutingKey(targetMacAddr, targetPort)
 
 	if c := ex.findClient(key); c != nil {
-		if err := c.write(packet, writePacketTimeout); err != nil {
+		if err := c.write(packet); err != nil {
 			c.logger.Warn().Err(err).Msg("[relay] failed to write packet")
 			ex.unregister <- c
 		}

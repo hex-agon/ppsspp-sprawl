@@ -10,15 +10,12 @@ import (
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog"
 )
 
 const p2pHeaderSize = 4
 const p2pMaxPacketSize = 4 * 1024
-
-const writePacketTimeout = 2 * time.Second
 
 type peerType int8
 
@@ -95,17 +92,14 @@ func (p *peer) close() {
 	})
 }
 
-func (p *peer) write(pkt p2pOutboundPacket, timeout time.Duration) error {
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
+func (p *peer) write(pkt p2pOutboundPacket) error {
 	select {
 	case <-p.ctx.Done():
 		return ErrPeerDisconnected
 	case p.txQueue <- pkt:
 		return nil
-	case <-timer.C:
-		return errors.New("tx queue full: timeout exceeded")
+	default:
+		return errors.New("writer: tx queue full")
 	}
 }
 
@@ -125,7 +119,7 @@ func (p *peer) reader() {
 			continue
 		}
 
-		if err := p.peer.write(pkt, writePacketTimeout); err != nil {
+		if err := p.peer.write(pkt); err != nil {
 			if !errors.Is(err, ErrPeerDisconnected) {
 				p.logger.Warn().Err(err).Msg("[relay] failed to write packet to peer")
 			}
