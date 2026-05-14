@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
+var ErrClientDisconnected = errors.New("client disconnected")
+
 type client struct {
 	exchange   *Exchange
 	conn       net.Conn
@@ -42,11 +44,16 @@ func (c *client) close() {
 	})
 }
 
-func (c *client) write(packet *pdpPacket, timeout time.Duration) error {
+func (c *client) write(pkt *pdpPacket, timeout time.Duration) error {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
-	case c.txQueue <- packet:
+	case <-c.ctx.Done():
+		return ErrClientDisconnected
+	case c.txQueue <- pkt:
 		return nil
-	case <-time.After(timeout):
+	case <-timer.C:
 		return errors.New("tx queue full: timeout exceeded")
 	}
 }
