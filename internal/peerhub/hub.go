@@ -95,7 +95,7 @@ func (hub *PeerHub) houseKeeper() {
 		case p := <-hub.registerListening:
 			hub.Lock()
 			if _, ok := hub.listeningPeers[p.key]; ok {
-				p.logger.Warn().Msg("[relay] attempted to register duplicate listening peer")
+				p.logger.Warn().Msg("[hub] attempted to register duplicate listening peer")
 				p.close()
 				hub.Unlock()
 				continue
@@ -106,7 +106,7 @@ func (hub *PeerHub) houseKeeper() {
 		case p := <-hub.registerConnected:
 			hub.Lock()
 			if _, ok := hub.connectedPeers[p.key]; ok {
-				p.logger.Warn().Msg("[relay] attempted to register duplicate connected peer")
+				p.logger.Warn().Msg("[hub] attempted to register duplicate connected peer")
 				p.close()
 				hub.Unlock()
 				continue
@@ -172,7 +172,7 @@ func (hub *PeerHub) registerPeer(conn net.Conn, macAddr pspnet.MacAddr, port uin
 func (hub *PeerHub) HandleListeningPeer(conn net.Conn, macAddr pspnet.MacAddr, port uint16) {
 	p := hub.registerPeer(conn, macAddr, port, peerTypeListening)
 
-	p.logger.Info().Msg("[relay] registered a new listening peer to the hub")
+	p.logger.Info().Msg("[hub] registered a new listening peer to the hub")
 }
 
 func (hub *PeerHub) HandleConnectingPeer(conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
@@ -181,9 +181,9 @@ func (hub *PeerHub) HandleConnectingPeer(conn net.Conn, srcAddr pspnet.MacAddr, 
 			log.Warn().
 				Str("ip", conn.RemoteAddr().String()).
 				Err(err).
-				Msg("[relay] failed to close connection")
+				Msg("[hub] failed to close connection")
 		}
-		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] closed connection")
+		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[hub] closed connection")
 	}
 	const maxRetries = 5
 	const retryDelay = 500 * time.Millisecond
@@ -206,7 +206,7 @@ func (hub *PeerHub) HandleConnectingPeer(conn net.Conn, srcAddr pspnet.MacAddr, 
 			Str("ip", conn.RemoteAddr().String()).
 			Str("src-key", srcPeerKey.String()).
 			Str("target-key", targetPeerKey.String()).
-			Msg("[relay] target peer not found after retries")
+			Msg("[hub] target peer not found after retries")
 		go connCloser(conn)
 		return
 	}
@@ -215,21 +215,21 @@ func (hub *PeerHub) HandleConnectingPeer(conn net.Conn, srcAddr pspnet.MacAddr, 
 		Str("ip", conn.RemoteAddr().String()).
 		Str("src-key", srcPeerKey.String()).
 		Str("target-key", targetPeerKey.String()).
-		Msg("[relay] target peer found to connect")
+		Msg("[hub] target peer found to connect")
 
-	log.Debug().Msgf("[relay] notifying %v that it should connect to %v on port %d", targetPeer.macAddr.String(), srcAddr.String(), srcPort)
+	log.Debug().Msgf("[hub] notifying %v that it should connect to %v on port %d", targetPeer.macAddr.String(), srcAddr.String(), srcPort)
 	peerAnnouncePkt := &peerAnnouncePacket{
 		macAddr: srcAddr,
 		port:    srcPort,
 	}
 	if err := targetPeer.write(peerAnnouncePkt); err != nil {
-		targetPeer.logger.Err(err).Msg("[relay] failed to write peer announce packet")
+		targetPeer.logger.Err(err).Msg("[hub] failed to write peer announce packet")
 		go connCloser(conn)
 		return
 	}
 
 	p := hub.registerPeer(conn, srcAddr, srcPort, peerTypeConnecting)
-	p.logger.Info().Msg("[relay] registered a new connected peer to the hub")
+	p.logger.Info().Msg("[hub] registered a new connected peer to the hub")
 }
 
 func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, srcPort uint16, targetAddr pspnet.MacAddr, targetPort uint16) {
@@ -238,9 +238,9 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 			log.Warn().
 				Str("ip", conn.RemoteAddr().String()).
 				Err(err).
-				Msg("[relay] failed to close connection")
+				Msg("[hub] failed to close connection")
 		}
-		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[relay] closed connection")
+		log.Info().Str("ip", conn.RemoteAddr().String()).Msg("[hub] closed connection")
 	}
 	srcPeerKey := newPeerKey(srcAddr, srcPort)
 	targetPeerKey := newPeerKey(targetAddr, targetPort)
@@ -252,7 +252,7 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 			Str("ip", conn.RemoteAddr().String()).
 			Str("src-key", srcPeerKey.String()).
 			Str("target-key", targetPeerKey.String()).
-			Msg("[relay] target peer not found to accept connection")
+			Msg("[hub] target peer not found to accept connection")
 		go connCloser(conn)
 		return
 	}
@@ -262,7 +262,7 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 			Str("ip", conn.RemoteAddr().String()).
 			Str("src-key", srcPeerKey.String()).
 			Str("target-key", targetPeerKey.String()).
-			Msg("[relay] attempted to hijack peer connection, disconnecting...")
+			Msg("[hub] attempted to hijack peer connection, disconnecting...")
 		go connCloser(conn)
 		return
 	}
@@ -275,7 +275,7 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 		port:    targetPort,
 	}
 	if err := p.write(announceTargetPeer); err != nil {
-		log.Warn().Err(err).Msg("[relay] failed to write accept conn packet to peer")
+		log.Warn().Err(err).Msg("[hub] failed to write accept conn packet to peer")
 		hub.unregister <- p
 		return
 	}
@@ -285,7 +285,7 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 		port:    srcPort,
 	}
 	if err := targetPeer.write(announceSrcPeer); err != nil {
-		log.Warn().Err(err).Msg("[relay] failed to write accept conn packet to peer")
+		log.Warn().Err(err).Msg("[hub] failed to write accept conn packet to peer")
 		hub.unregister <- p
 		return
 	}
@@ -294,5 +294,5 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 		Str("ip", conn.RemoteAddr().String()).
 		Str("src-key", srcPeerKey.String()).
 		Str("target-key", targetPeerKey.String()).
-		Msg("[relay] peer accepted connection")
+		Msg("[hub] peer accepted connection")
 }

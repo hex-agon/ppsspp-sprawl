@@ -35,11 +35,11 @@ func (c *client) close() {
 		if err := c.conn.Close(); err != nil {
 			c.logger.Warn().
 				Err(err).
-				Msg("[relay] failed to close connection")
+				Msg("[exchange] failed to close connection")
 		}
 		c.exchange.unregister <- c
 
-		c.logger.Info().Msg("[relay] client disconnected")
+		c.logger.Info().Msg("[exchange] client disconnected")
 	})
 }
 
@@ -59,7 +59,7 @@ func (c *client) reader() {
 		pkt, err := c.decoder.next()
 		if err != nil {
 			if err != io.EOF {
-				c.logger.Warn().Err(err).Msg("[relay] reader: client read error")
+				c.logger.Warn().Err(err).Msg("[exchange] reader: client read error")
 			}
 			c.close()
 			return
@@ -95,7 +95,7 @@ func (c *client) writer() {
 			return
 		case pkt := <-c.txQueue:
 			if err := c.encoder.writeAndFlush(pkt); err != nil {
-				c.logger.Warn().Err(err).Msg("[relay] writer: failed to write data to the client")
+				c.logger.Warn().Err(err).Msg("[exchange] writer: failed to write data to the client")
 				pkt.release()
 				c.close()
 				continue // Do NOT return here, otherwise the case <-c.ctx.Done() won't drain the write queue

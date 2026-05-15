@@ -66,14 +66,14 @@ func (ex *Exchange) houseKeeper() {
 			return
 		case c := <-ex.register:
 			if c.routingKey == (routingKey{}) {
-				c.logger.Warn().Msg("[relay] client has empty routing key")
+				c.logger.Warn().Msg("[exchange] client has empty routing key")
 				go c.close()
 				break
 			}
 
 			ex.Lock()
 			if _, ok := ex.clients[c.routingKey]; ok {
-				c.logger.Warn().Msg("[relay] duplicate client registration attempt")
+				c.logger.Warn().Msg("[exchange] duplicate client registration attempt")
 
 				go c.close()
 				ex.Unlock()
@@ -120,7 +120,7 @@ func (ex *Exchange) RegisterClient(conn net.Conn, macAddr pspnet.MacAddr, port u
 	go c.reader()
 	go c.writer()
 
-	c.logger.Info().Msg("[relay] registered a new client to the exchange")
+	c.logger.Info().Msg("[exchange] registered a new client to the exchange")
 }
 
 func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16, pkt *pdpPacket) {
@@ -128,7 +128,7 @@ func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16,
 
 	if c := ex.findClient(key); c != nil {
 		if err := c.write(pkt); err != nil {
-			c.logger.Warn().Err(err).Msg("[relay] failed to write packet")
+			c.logger.Warn().Err(err).Msg("[exchange] failed to write packet")
 			pkt.release()
 			c.close()
 		}

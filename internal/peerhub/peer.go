@@ -77,7 +77,7 @@ func (p *peer) close() {
 		p.ctxCancel()
 
 		if err := p.conn.Close(); err != nil {
-			p.logger.Err(err).Msg("[relay] failed to close connection")
+			p.logger.Err(err).Msg("[hub] failed to close connection")
 		}
 		p.hub.unregister <- p
 
@@ -88,7 +88,7 @@ func (p *peer) close() {
 			go other.close()
 		}
 
-		p.logger.Info().Msg("[relay] peer disconnected")
+		p.logger.Info().Msg("[hub] peer disconnected")
 	})
 }
 
@@ -108,21 +108,21 @@ func (p *peer) reader() {
 		pkt, err := p.decoder.next()
 		if err != nil {
 			if err != io.EOF {
-				p.logger.Warn().Err(err).Msg("[relay] reader: client read error")
+				p.logger.Warn().Err(err).Msg("[hub] reader: client read error")
 			}
 			p.close()
 			return
 		}
 
 		if p.peer == nil {
-			p.logger.Warn().Msg("[relay] reader: peer has no peer, discarding packet")
+			p.logger.Warn().Msg("[hub] reader: peer has no peer, discarding packet")
 			pkt.release()
 			continue
 		}
 
 		if err := p.peer.write(pkt); err != nil {
 			if !errors.Is(err, ErrPeerDisconnected) {
-				p.logger.Warn().Err(err).Msg("[relay] failed to write packet to peer")
+				p.logger.Warn().Err(err).Msg("[hub] failed to write packet to peer")
 			}
 			pkt.release()
 			p.close()
@@ -134,11 +134,11 @@ func (p *peer) writer() {
 	for {
 		select {
 		case <-p.ctx.Done():
-			p.logger.Debug().Msg("[relay] writer: context cancelled")
+			p.logger.Debug().Msg("[hub] writer: context cancelled")
 			return
 		case pkt := <-p.txQueue:
 			if err := p.encoder.writeAndFlush(pkt); err != nil {
-				p.logger.Warn().Err(err).Msg("[relay] writer: failed to write data to the client")
+				p.logger.Warn().Err(err).Msg("[hub] writer: failed to write data to the client")
 			}
 			if p2p, ok := pkt.(*p2pPacket); ok {
 				p2p.release()
