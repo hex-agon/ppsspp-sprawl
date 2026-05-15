@@ -11,6 +11,7 @@ import (
 	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -108,7 +109,11 @@ func (c *client) reader() {
 		inboundPkt, err := c.decoder.Next()
 
 		if err != nil {
-			if err != io.EOF {
+			switch {
+			case errors.Is(err, io.EOF):
+			case errors.Is(err, net.ErrClosed):
+			case errors.Is(err, syscall.ECONNRESET):
+			default:
 				c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
 			}
 			c.close()

@@ -10,6 +10,7 @@ import (
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
+	"syscall"
 
 	"github.com/rs/zerolog"
 )
@@ -107,7 +108,11 @@ func (p *peer) reader() {
 	for {
 		pkt, err := p.decoder.next()
 		if err != nil {
-			if err != io.EOF {
+			switch {
+			case errors.Is(err, io.EOF):
+			case errors.Is(err, net.ErrClosed):
+			case errors.Is(err, syscall.ECONNRESET):
+			default:
 				p.logger.Warn().Err(err).Msg("[hub] reader: client read error")
 			}
 			p.close()

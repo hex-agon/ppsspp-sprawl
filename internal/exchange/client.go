@@ -7,6 +7,7 @@ import (
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
+	"syscall"
 
 	"github.com/rs/zerolog"
 )
@@ -58,7 +59,11 @@ func (c *client) reader() {
 	for {
 		pkt, err := c.decoder.next()
 		if err != nil {
-			if err != io.EOF {
+			switch {
+			case errors.Is(err, io.EOF):
+			case errors.Is(err, net.ErrClosed):
+			case errors.Is(err, syscall.ECONNRESET):
+			default:
 				c.logger.Warn().Err(err).Msg("[exchange] reader: client read error")
 			}
 			c.close()
