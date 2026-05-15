@@ -30,12 +30,16 @@ func (d *decoder) next() (*p2pPacket, error) {
 	if packetSize > p2pMaxPacketSize {
 		return nil, fmt.Errorf("packet size %d exceeds limit %d", packetSize, p2pMaxPacketSize)
 	}
-	payload := make([]byte, packetSize)
+	pkt := p2pPacketPool.Get().(*p2pPacket)
 
-	if _, err := io.ReadFull(d.reader, payload); err != nil {
+	if _, err := io.ReadFull(d.reader, pkt.payload[:packetSize]); err != nil {
+		pkt.release()
 		return nil, err
 	}
-	packetSizeHistogram.Observe(float64(p2pHeaderSize + packetSize))
-	peersRxBytes.Add(float64(p2pHeaderSize + packetSize))
-	return &p2pPacket{payload: payload}, nil
+	totalSize := float64(p2pHeaderSize + packetSize)
+	packetSizeHistogram.Observe(totalSize)
+	peersRxBytes.Add(totalSize)
+
+	pkt.packetSize = packetSize
+	return pkt, nil
 }

@@ -75,7 +75,7 @@ func TestExchange(t *testing.T) {
 		ex := NewExchange(ctx)
 
 		mac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
-		ex.routePacket(mac, 0, &pdpPacket{payload: []byte("data")})
+		ex.routePacket(mac, 0, &pdpPacket{payload: []byte("data"), packetSize: 4})
 		// should just do nothing
 	})
 }

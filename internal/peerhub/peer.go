@@ -116,6 +116,7 @@ func (p *peer) reader() {
 
 		if p.peer == nil {
 			p.logger.Warn().Msg("[relay] reader: peer has no peer, discarding packet")
+			pkt.release()
 			continue
 		}
 
@@ -123,6 +124,7 @@ func (p *peer) reader() {
 			if !errors.Is(err, ErrPeerDisconnected) {
 				p.logger.Warn().Err(err).Msg("[relay] failed to write packet to peer")
 			}
+			pkt.release()
 			p.close()
 		}
 	}
@@ -137,6 +139,9 @@ func (p *peer) writer() {
 		case pkt := <-p.txQueue:
 			if err := p.encoder.writeAndFlush(pkt); err != nil {
 				p.logger.Warn().Err(err).Msg("[relay] writer: failed to write data to the client")
+			}
+			if p2p, ok := pkt.(*p2pPacket); ok {
+				p2p.release()
 			}
 		}
 	}

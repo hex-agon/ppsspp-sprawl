@@ -32,10 +32,10 @@ func TestClient(t *testing.T) {
 			ctxCancel: cancel,
 			txQueue:   make(chan *pdpPacket, 1),
 		}
-		err := cli.write(&pdpPacket{payload: []byte("fill tx queue")})
+		err := cli.write(&pdpPacket{payload: []byte("fill tx queue"), packetSize: 13})
 		assert.NoError(t, err)
 
-		err = cli.write(&pdpPacket{payload: []byte("write timeout")})
+		err = cli.write(&pdpPacket{payload: []byte("write timeout"), packetSize: 13})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "tx queue full")
 	})

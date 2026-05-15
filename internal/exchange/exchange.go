@@ -123,14 +123,16 @@ func (ex *Exchange) RegisterClient(conn net.Conn, macAddr pspnet.MacAddr, port u
 	c.logger.Info().Msg("[relay] registered a new client to the exchange")
 }
 
-func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16, packet *pdpPacket) {
+func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16, pkt *pdpPacket) {
 	key := newRoutingKey(targetMacAddr, targetPort)
 
 	if c := ex.findClient(key); c != nil {
-		if err := c.write(packet); err != nil {
+		if err := c.write(pkt); err != nil {
 			c.logger.Warn().Err(err).Msg("[relay] failed to write packet")
+			pkt.release()
 			c.close()
 		}
 		return
 	}
+	pkt.release()
 }

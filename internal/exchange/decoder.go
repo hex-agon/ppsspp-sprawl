@@ -35,16 +35,15 @@ func (d *decoder) next() (*pdpPacket, error) {
 	if packetSize > pdpMaxPacketSize {
 		return nil, fmt.Errorf("packet size %d exceeds limit %d", packetSize, pdpMaxPacketSize)
 	}
-	payload := make([]byte, packetSize)
-
-	if _, err := io.ReadFull(d.reader, payload); err != nil {
+	pkt := pdpPacketPool.Get().(*pdpPacket)
+	if _, err := io.ReadFull(d.reader, pkt.payload[:packetSize]); err != nil {
+		pkt.release()
 		return nil, err
 	}
 	packetSizeHistogram.Observe(float64(pdpHeaderSize + packetSize))
-	return &pdpPacket{
-		macAddr:    targetMacAddr,
-		port:       targetPort,
-		packetSize: packetSize,
-		payload:    payload,
-	}, nil
+	
+	pkt.macAddr = targetMacAddr
+	pkt.port = targetPort
+	pkt.packetSize = packetSize
+	return pkt, nil
 }

@@ -25,7 +25,7 @@ func (e *encoder) writeAndFlush(pkt *pdpPacket) error {
 	writer.Skip(2)
 	writer.Uint16(pkt.port)
 	writer.Uint32(pkt.packetSize)
-	writer.Bytes(pkt.payload)
+	writer.Bytes(pkt.payload[:pkt.packetSize])
 
 	n := writer.Pos()
 
