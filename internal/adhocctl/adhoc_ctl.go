@@ -15,7 +15,6 @@ import (
 
 const maxPacketSize = 1024
 const loginPacketTimeout = 5 * time.Second
-const writePacketTimeout = 5 * time.Second
 
 type GroupStatus struct {
 	ID        string   `json:"id"`

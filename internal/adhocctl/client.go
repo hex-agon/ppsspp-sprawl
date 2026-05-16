@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sprawl/internal/packet"
@@ -12,7 +11,6 @@ import (
 	"sprawl/internal/titledb"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -61,6 +59,7 @@ func broadcastDisconnect(c *client) {
 	// Since the protocol disconnects by ipv4 addr, we need to do a small workaround, similar to what aemu does
 	sameIpCount := 0
 	ipAddr := c.remoteAddr4()
+
 	// we're gonna have to disconnect everyone that has the same ipv4 addr then reconnect the remaining
 	c.group.forEach(func(other *client) {
 		if other.remoteAddr4() == ipAddr {
@@ -95,12 +94,12 @@ func broadcastDisconnect(c *client) {
 	}
 }
 
-func (c *client) write(packet packet.OutboundPacket, timeout time.Duration) error {
+func (c *client) write(packet packet.OutboundPacket) error {
 	select {
 	case c.txQueue <- packet:
 		return nil
-	case <-time.After(timeout):
-		return fmt.Errorf("tx queue full: timeout exceeded when writing to mac: %s", c.macAddr.String())
+	default:
+		return errors.New("writer: tx queue full")
 	}
 }
 
@@ -174,7 +173,7 @@ func handleConnectPacket(c *client, pkt *c2sConnect) error {
 			return
 		}
 		// Notify other about the new group member
-		if err := other.write(newClientPacket, writePacketTimeout); err != nil {
+		if err := other.write(newClientPacket); err != nil {
 			other.logger.Warn().Err(err).Msg("[ctl] client: write error")
 			other.close()
 		}
@@ -186,13 +185,13 @@ func handleConnectPacket(c *client, pkt *c2sConnect) error {
 			ipAddr:      other.remoteAddr4(),
 		}
 
-		if err := c.write(otherClientPacket, writePacketTimeout); err != nil {
+		if err := c.write(otherClientPacket); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] client: write error")
 			c.close()
 		}
 	})
 
-	if err := c.write(&s2cConnectBssid{macAddr: c.macAddr}, writePacketTimeout); err != nil {
+	if err := c.write(&s2cConnectBssid{macAddr: c.macAddr}); err != nil {
 		return err
 	}
 
@@ -233,13 +232,13 @@ func handleScanPacket(c *client) error {
 			founderAddr: g.founderMacAddr,
 		}
 
-		if err := c.write(scanReply, writePacketTimeout); err != nil {
+		if err := c.write(scanReply); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] client: write error")
 			c.close()
 		}
 	})
 
-	if err := c.write(&s2cScanComplete{}, writePacketTimeout); err != nil {
+	if err := c.write(&s2cScanComplete{}); err != nil {
 		return err
 	}
 	return nil
