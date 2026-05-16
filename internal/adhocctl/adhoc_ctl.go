@@ -173,7 +173,7 @@ func (srv *ctlServer) houseKeeper() {
 	}
 }
 
-func (srv *ctlServer) joinGroup(cli *client, tid titledb.TitleId, id groupId) error {
+func (srv *ctlServer) joinGroup(c *client, tid titledb.TitleId, id groupId) error {
 	srv.Lock()
 	defer srv.Unlock()
 
@@ -190,7 +190,7 @@ func (srv *ctlServer) joinGroup(cli *client, tid titledb.TitleId, id groupId) er
 			srv:            srv,
 			id:             id,
 			tid:            tid,
-			founderMacAddr: cli.macAddr,
+			founderMacAddr: c.macAddr,
 			clients:        make(map[*client]struct{}),
 			createdAt:      time.Now().Unix(),
 		}
@@ -204,22 +204,28 @@ func (srv *ctlServer) joinGroup(cli *client, tid titledb.TitleId, id groupId) er
 			Str("founder", grp.founderMacAddr.String()).
 			Msg("[ctl] join-group: formed a new group")
 	}
-	if err := grp.add(cli); err != nil {
+	if err := grp.add(c); err != nil {
 		return err
 	}
-	cli.group = grp
+	c.group = grp
 	return nil
 }
 
-func (srv *ctlServer) disbandGroup(g *group) {
+// leaveGroup removes a client from its current group and disbands the group if it becomes empty.
+func (srv *ctlServer) leaveGroup(c *client) {
 	srv.Lock()
 	defer srv.Unlock()
 
-	if groups, ok := srv.groups[g.tid]; ok {
-		delete(groups, g.id)
-		log.Info().
-			Str("groupId", g.id.String()).
-			Msg("[ctl] join-group: disbanded group")
+	g := c.group
+	emptyGroup := g.remove(c)
+
+	if emptyGroup {
+		if groups, ok := srv.groups[g.tid]; ok {
+			delete(groups, g.id)
+			log.Info().
+				Str("groupId", g.id.String()).
+				Msg("[ctl] join-group: disbanded group")
+		}
 	}
 }
 

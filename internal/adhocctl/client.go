@@ -48,7 +48,7 @@ func (c *client) close() {
 
 		if c.group != nil {
 			broadcastDisconnect(c)
-			c.group.remove(c)
+			c.server.leaveGroup(c)
 			c.group = nil
 		}
 		c.logger.Info().Msg("[ctl] client disconnected")
@@ -60,37 +60,52 @@ func broadcastDisconnect(c *client) {
 	sameIpCount := 0
 	ipAddr := c.remoteAddr4()
 
-	// we're gonna have to disconnect everyone that has the same ipv4 addr then reconnect the remaining
-	c.group.forEach(func(other *client) {
+	g := c.group
+	g.RLock()
+	defer g.RUnlock()
+
+	var clientsToReconnect []*client
+	// count everyone under the same ipAddr and gather them
+	for other := range g.clients {
 		if other.remoteAddr4() == ipAddr {
+			if other != c {
+				clientsToReconnect = append(clientsToReconnect, other)
+			}
 			sameIpCount++
 		}
-	})
-	pkt := &s2cClientDisconnected{ipAddr: ipAddr}
-
-	// repeat broadcast for disconnecting all the clients under the same ipv4
-	for i := 0; i < sameIpCount; i++ {
-		c.group.broadcast(pkt, func(other *client) bool {
-			return other != c
-		})
 	}
 
-	// broadcast reconnects for all but client c
-	var clientsToNotify []*client
-	c.group.forEach(func(other *client) {
-		if other.remoteAddr4() == ipAddr {
-			clientsToNotify = append(clientsToNotify, other)
-		}
-	})
+	pkt := &s2cClientDisconnected{ipAddr: ipAddr}
 
-	for _, other := range clientsToNotify {
-		other.group.broadcast(&s2cClientConnected{
-			displayName: other.name,
-			macAddr:     other.macAddr,
-			ipAddr:      other.remoteAddr4(),
-		}, func(c *client) bool {
-			return c != other
-		})
+	// repeat broadcast disconnecting all the clients under the same ipAddr
+	for i := 0; i < sameIpCount; i++ {
+		for other := range g.clients {
+			if other == c { // no need to notify ourselves
+				continue
+			}
+
+			if err := other.write(pkt); err != nil {
+				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
+				other.close()
+			}
+		}
+	}
+
+	for _, reconnectingClient := range clientsToReconnect {
+		for other := range g.clients {
+			if other == reconnectingClient || other == c { // no need to notify itself
+				continue
+			}
+			pkt := &s2cClientConnected{
+				displayName: reconnectingClient.name,
+				macAddr:     reconnectingClient.macAddr,
+				ipAddr:      reconnectingClient.remoteAddr4(),
+			}
+			if err := other.write(pkt); err != nil {
+				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
+				other.close()
+			}
+		}
 	}
 }
 
@@ -209,7 +224,7 @@ func handleDisconnectPacket(c *client) error {
 	gid := g.id
 
 	broadcastDisconnect(c)
-	g.remove(c)
+	g.srv.leaveGroup(c)
 	c.group = nil
 
 	c.logger.Info().Msgf("[ctl] disconnect: disconnected client from group %s", gid.String())

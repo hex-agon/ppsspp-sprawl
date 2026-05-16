@@ -55,10 +55,13 @@ func (g *group) add(c *client) error {
 	return nil
 }
 
-func (g *group) remove(c *client) {
+// remove removes the specified client from the group and elects a new leader if the removed client was the founder.
+// It returns true if the group becomes empty after the removal.
+func (g *group) remove(c *client) bool {
 	g.Lock()
+	defer g.Unlock()
+
 	delete(g.clients, c)
-	emptyGroup := len(g.clients) == 0
 
 	if c.macAddr == g.founderMacAddr {
 		for newLeader := range g.clients {
@@ -67,11 +70,7 @@ func (g *group) remove(c *client) {
 			break
 		}
 	}
-	g.Unlock()
-
-	if emptyGroup {
-		g.srv.disbandGroup(g)
-	}
+	return len(g.clients) == 0
 }
 
 func (g *group) forEach(consumer func(*client)) {
