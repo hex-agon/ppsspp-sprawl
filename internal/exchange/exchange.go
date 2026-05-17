@@ -10,7 +10,7 @@ import (
 )
 
 const pdpHeaderSize = 14
-const pdpMaxPacketSize = 4 * 1024
+const pdpMaxPacketSize = 10 * 1024
 
 // Exchange represents a hub for managing client connections and routing messages between them.
 type Exchange struct {

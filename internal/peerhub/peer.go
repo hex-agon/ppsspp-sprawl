@@ -16,7 +16,7 @@ import (
 )
 
 const p2pHeaderSize = 4
-const p2pMaxPacketSize = 4 * 1024
+const p2pMaxPacketSize = 10 * 1024
 
 type peerType int8
 
