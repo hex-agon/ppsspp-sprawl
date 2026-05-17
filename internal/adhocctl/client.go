@@ -86,7 +86,7 @@ func broadcastDisconnect(c *client) {
 
 			if err := other.write(pkt); err != nil {
 				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
-				other.close()
+				go other.close()
 			}
 		}
 	}
@@ -103,7 +103,7 @@ func broadcastDisconnect(c *client) {
 			}
 			if err := other.write(pkt); err != nil {
 				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
-				other.close()
+				go other.close()
 			}
 		}
 	}
@@ -130,13 +130,13 @@ func (c *client) reader() {
 			default:
 				c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
 			}
-			c.close()
+			go c.close()
 			return
 		}
 
 		handleErr := func(err error) {
 			c.logger.Warn().Err(err).Msg("[ctl] reader: packet handler error")
-			c.close()
+			go c.close()
 		}
 
 		switch pkt := inboundPkt.(type) {
@@ -190,7 +190,7 @@ func handleConnectPacket(c *client, pkt *c2sConnect) error {
 		// Notify other about the new group member
 		if err := other.write(newClientPacket); err != nil {
 			other.logger.Warn().Err(err).Msg("[ctl] client: write error")
-			other.close()
+			go other.close()
 		}
 
 		// Notify the new client about other group members
@@ -202,7 +202,7 @@ func handleConnectPacket(c *client, pkt *c2sConnect) error {
 
 		if err := c.write(otherClientPacket); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] client: write error")
-			c.close()
+			go c.close()
 		}
 	})
 
@@ -249,7 +249,7 @@ func handleScanPacket(c *client) error {
 
 		if err := c.write(scanReply); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] client: write error")
-			c.close()
+			go c.close()
 		}
 	})
 
