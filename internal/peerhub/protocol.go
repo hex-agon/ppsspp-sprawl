@@ -9,6 +9,7 @@ import (
 
 type p2pOutboundPacket interface {
 	writeTo([]byte) (int, error)
+	release()
 }
 
 var p2pPacketPool = sync.Pool{
@@ -48,4 +49,8 @@ func (p *peerAnnouncePacket) writeTo(bytes []byte) (int, error) {
 	writer.Skip(2)
 	writer.Uint16(p.port)
 	return writer.Pos(), nil
+}
+
+func (p *peerAnnouncePacket) release() {
+	// NO-OP
 }

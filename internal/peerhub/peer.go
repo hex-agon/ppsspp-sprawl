@@ -136,18 +136,30 @@ func (p *peer) reader() {
 }
 
 func (p *peer) writer() {
+	drainQueue := func() {
+		for {
+			select {
+			case pkt := <-p.txQueue:
+				pkt.release()
+			default:
+				return
+			}
+		}
+	}
 	for {
 		select {
 		case <-p.ctx.Done():
-			p.logger.Debug().Msg("[hub] writer: context cancelled")
+			drainQueue()
 			return
 		case pkt := <-p.txQueue:
 			if err := p.encoder.writeAndFlush(pkt); err != nil {
 				p.logger.Warn().Err(err).Msg("[hub] writer: failed to write data to the client")
+				pkt.release()
+				drainQueue()
+				p.close()
+				return
 			}
-			if p2p, ok := pkt.(*p2pPacket); ok {
-				p2p.release()
-			}
+			pkt.release()
 		}
 	}
 }

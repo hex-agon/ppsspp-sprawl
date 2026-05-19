@@ -102,8 +102,9 @@ func (c *client) writer() {
 			if err := c.encoder.writeAndFlush(pkt); err != nil {
 				c.logger.Warn().Err(err).Msg("[exchange] writer: failed to write data to the client")
 				pkt.release()
+				drainQueue()
 				c.close()
-				continue // Do NOT return here, otherwise the case <-c.ctx.Done() won't drain the write queue
+				return
 			}
 			pkt.release()
 			clientsTxBytes.Add(float64(pdpHeaderSize + pkt.packetSize))
