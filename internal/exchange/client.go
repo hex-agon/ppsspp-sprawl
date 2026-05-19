@@ -30,8 +30,20 @@ type client struct {
 }
 
 func (c *client) close() {
+	drainTxQueue := func() {
+		for {
+			select {
+			case pkt := <-c.txQueue:
+				pkt.release()
+			default:
+				return
+			}
+		}
+	}
+
 	c.closeOnce.Do(func() {
 		c.ctxCancel()
+		drainTxQueue()
 
 		if err := c.conn.Close(); err != nil {
 			c.logger.Warn().
@@ -82,29 +94,16 @@ func (c *client) reader() {
 }
 
 func (c *client) writer() {
-	drainQueue := func() {
-		for {
-			select {
-			case pkt := <-c.txQueue:
-				pkt.release()
-			default:
-				return
-			}
-		}
-	}
-
 	for {
 		select {
 		case <-c.ctx.Done():
-			drainQueue()
 			return
 		case pkt := <-c.txQueue:
 			if err := c.encoder.writeAndFlush(pkt); err != nil {
 				c.logger.Warn().Err(err).Msg("[exchange] writer: failed to write data to the client")
 				pkt.release()
-				drainQueue()
 				c.close()
-				return
+				continue
 			}
 			pkt.release()
 			clientsTxBytes.Add(float64(pdpHeaderSize + pkt.packetSize))

@@ -74,8 +74,20 @@ type peer struct {
 }
 
 func (p *peer) close() {
+	drainTxQueue := func() {
+		for {
+			select {
+			case pkt := <-p.txQueue:
+				pkt.release()
+			default:
+				return
+			}
+		}
+	}
+
 	p.closeOnce.Do(func() {
 		p.ctxCancel()
+		drainTxQueue()
 
 		if err := p.conn.Close(); err != nil {
 			p.logger.Err(err).Msg("[hub] failed to close connection")
@@ -136,28 +148,16 @@ func (p *peer) reader() {
 }
 
 func (p *peer) writer() {
-	drainQueue := func() {
-		for {
-			select {
-			case pkt := <-p.txQueue:
-				pkt.release()
-			default:
-				return
-			}
-		}
-	}
 	for {
 		select {
 		case <-p.ctx.Done():
-			drainQueue()
 			return
 		case pkt := <-p.txQueue:
 			if err := p.encoder.writeAndFlush(pkt); err != nil {
 				p.logger.Warn().Err(err).Msg("[hub] writer: failed to write data to the client")
 				pkt.release()
-				drainQueue()
 				p.close()
-				return
+				continue
 			}
 			pkt.release()
 		}
