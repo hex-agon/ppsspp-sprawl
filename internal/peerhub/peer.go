@@ -98,7 +98,7 @@ func (p *peer) close() {
 			other := p.peer
 			p.peer = nil
 			other.peer = nil
-			go other.close()
+			other.close()
 		}
 
 		p.logger.Info().Msg("[hub] peer disconnected")

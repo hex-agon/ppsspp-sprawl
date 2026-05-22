@@ -2,6 +2,7 @@ package exchange
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
@@ -67,7 +68,7 @@ func (ex *Exchange) houseKeeper() {
 		case c := <-ex.register:
 			if c.routingKey == (routingKey{}) {
 				c.logger.Warn().Msg("[exchange] client has empty routing key")
-				go c.close()
+				c.close()
 				break
 			}
 
@@ -75,7 +76,7 @@ func (ex *Exchange) houseKeeper() {
 			if _, ok := ex.clients[c.routingKey]; ok {
 				c.logger.Warn().Msg("[exchange] duplicate client registration attempt")
 
-				go c.close()
+				c.close()
 				ex.Unlock()
 				break
 			}
@@ -128,7 +129,9 @@ func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16,
 
 	if c := ex.findClient(key); c != nil {
 		if err := c.write(pkt); err != nil {
-			c.logger.Warn().Err(err).Msg("[exchange] failed to write packet")
+			if !errors.Is(err, ErrClientDisconnected) {
+				c.logger.Warn().Err(err).Msg("[exchange] failed to write packet")
+			}
 			pkt.release()
 			c.close()
 		}

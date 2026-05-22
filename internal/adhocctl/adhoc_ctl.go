@@ -76,7 +76,7 @@ func NewCtlServer(addr string, port string) (Server, error) {
 		cancelFunc:       ctxCancel,
 		clients:          make(map[pspnet.MacAddr]*client),
 		groups:           make(map[titledb.TitleId]map[groupId]*group),
-		unregisterClient: make(chan *client, 16),
+		unregisterClient: make(chan *client, 64),
 	}
 
 	go srv.connAcceptor()
@@ -162,11 +162,16 @@ func (srv *ctlServer) houseKeeper() {
 		select {
 		case <-srv.ctx.Done():
 			return
-		case cli := <-srv.unregisterClient:
+		case c := <-srv.unregisterClient:
 			srv.Lock()
-			if _, ok := srv.clients[cli.macAddr]; ok {
-				delete(srv.clients, cli.macAddr)
+			if _, ok := srv.clients[c.macAddr]; ok {
+				delete(srv.clients, c.macAddr)
 				clientsCount.Dec()
+			}
+
+			if c.group != nil {
+				srv.leaveGroupLocked(c)
+				c.group = nil
 			}
 			srv.Unlock()
 		}
@@ -174,16 +179,16 @@ func (srv *ctlServer) houseKeeper() {
 }
 
 func (srv *ctlServer) joinGroup(c *client, tid titledb.TitleId, id groupId) error {
-	srv.Lock()
-	defer srv.Unlock()
-
 	var grp *group
 
+	srv.RLock()
 	if groups, ok := srv.groups[tid]; ok {
 		if g, ok := groups[id]; ok {
 			grp = g
 		}
 	}
+	srv.RUnlock()
+
 	// create a new group if it doesn't exist
 	if grp == nil {
 		grp = &group{
@@ -194,10 +199,12 @@ func (srv *ctlServer) joinGroup(c *client, tid titledb.TitleId, id groupId) erro
 			clients:        make(map[*client]struct{}),
 			createdAt:      time.Now().Unix(),
 		}
+		srv.Lock()
 		if srv.groups[tid] == nil {
 			srv.groups[tid] = make(map[groupId]*group)
 		}
 		srv.groups[tid][id] = grp
+		srv.Unlock()
 
 		log.Info().
 			Str("groupId", grp.id.String()).
@@ -211,20 +218,14 @@ func (srv *ctlServer) joinGroup(c *client, tid titledb.TitleId, id groupId) erro
 	return nil
 }
 
-// leaveGroup removes a client from its current group and disbands the group if it becomes empty.
-func (srv *ctlServer) leaveGroup(c *client) {
-	srv.Lock()
-	defer srv.Unlock()
-
+func (srv *ctlServer) leaveGroupLocked(c *client) {
 	g := c.group
 	emptyGroup := g.remove(c)
 
 	if emptyGroup {
 		if groups, ok := srv.groups[g.tid]; ok {
 			delete(groups, g.id)
-			log.Info().
-				Str("groupId", g.id.String()).
-				Msg("[ctl] join-group: disbanded group")
+			log.Info().Str("groupId", g.id.String()).Msg("[ctl] disbanded group")
 		}
 	}
 }

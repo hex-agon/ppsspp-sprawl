@@ -87,7 +87,7 @@ func (g *group) broadcast(packet packet.OutboundPacket, filter func(*client) boo
 		if filter(c) {
 			if err := c.write(packet); err != nil {
 				c.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
-				go c.close()
+				c.close()
 			}
 		}
 	})

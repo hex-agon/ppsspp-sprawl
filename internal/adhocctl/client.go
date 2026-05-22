@@ -43,13 +43,10 @@ func (c *client) close() {
 		if err := c.conn.Close(); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] failed to close connection")
 		}
-
 		c.server.unregisterClient <- c
 
 		if c.group != nil {
 			broadcastDisconnect(c)
-			c.server.leaveGroup(c)
-			c.group = nil
 		}
 		c.logger.Info().Msg("[ctl] client disconnected")
 	})
@@ -60,39 +57,41 @@ func broadcastDisconnect(c *client) {
 	sameIpCount := 0
 	ipAddr := c.remoteAddr4()
 
-	g := c.group
-	g.RLock()
-	defer g.RUnlock()
-
-	var clientsToReconnect []*client
+	c.group.RLock()
+	var sameIpTargets []*client
+	var targetsToNotify []*client
 	// count everyone under the same ipAddr and gather them
-	for other := range g.clients {
+	for other := range c.group.clients {
+		if other == c {
+			continue
+		}
+		targetsToNotify = append(targetsToNotify, other)
+
 		if other.remoteAddr4() == ipAddr {
-			if other != c {
-				clientsToReconnect = append(clientsToReconnect, other)
-			}
-			sameIpCount++
+			sameIpTargets = append(sameIpTargets, other)
 		}
 	}
+	c.group.RUnlock()
+	sameIpCount = len(sameIpTargets) + 1
 
 	pkt := &s2cClientDisconnected{ipAddr: ipAddr}
 
 	// repeat broadcast disconnecting all the clients under the same ipAddr
 	for i := 0; i < sameIpCount; i++ {
-		for other := range g.clients {
+		for _, other := range targetsToNotify {
 			if other == c { // no need to notify ourselves
 				continue
 			}
 
 			if err := other.write(pkt); err != nil {
 				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
-				go other.close()
+				other.close()
 			}
 		}
 	}
 
-	for _, reconnectingClient := range clientsToReconnect {
-		for other := range g.clients {
+	for _, reconnectingClient := range sameIpTargets {
+		for _, other := range targetsToNotify {
 			if other == reconnectingClient || other == c { // no need to notify itself
 				continue
 			}
@@ -103,7 +102,7 @@ func broadcastDisconnect(c *client) {
 			}
 			if err := other.write(pkt); err != nil {
 				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
-				go other.close()
+				other.close()
 			}
 		}
 	}
@@ -130,13 +129,13 @@ func (c *client) reader() {
 			default:
 				c.logger.Warn().Err(err).Msg("[ctl] reader: client read error")
 			}
-			go c.close()
+			c.close()
 			return
 		}
 
 		handleErr := func(err error) {
 			c.logger.Warn().Err(err).Msg("[ctl] reader: packet handler error")
-			go c.close()
+			c.close()
 		}
 
 		switch pkt := inboundPkt.(type) {
@@ -190,7 +189,7 @@ func handleConnectPacket(c *client, pkt *c2sConnect) error {
 		// Notify other about the new group member
 		if err := other.write(newClientPacket); err != nil {
 			other.logger.Warn().Err(err).Msg("[ctl] client: write error")
-			go other.close()
+			other.close()
 		}
 
 		// Notify the new client about other group members
@@ -202,7 +201,7 @@ func handleConnectPacket(c *client, pkt *c2sConnect) error {
 
 		if err := c.write(otherClientPacket); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] client: write error")
-			go c.close()
+			c.close()
 		}
 	})
 
@@ -217,17 +216,10 @@ func handleConnectPacket(c *client, pkt *c2sConnect) error {
 func handleDisconnectPacket(c *client) error {
 	c.logger.Debug().Msg("[ctl] disconnect: handing packet")
 
-	g := c.group
-	if g == nil {
+	if c.group == nil {
 		return errors.New("disconnect: client is not connected to any group")
 	}
-	gid := g.id
-
-	broadcastDisconnect(c)
-	g.srv.leaveGroup(c)
-	c.group = nil
-
-	c.logger.Info().Msgf("[ctl] disconnect: disconnected client from group %s", gid.String())
+	c.close()
 	return nil
 }
 
@@ -249,7 +241,7 @@ func handleScanPacket(c *client) error {
 
 		if err := c.write(scanReply); err != nil {
 			c.logger.Warn().Err(err).Msg("[ctl] client: write error")
-			go c.close()
+			c.close()
 		}
 	})
 
