@@ -41,7 +41,8 @@ func (d *decoder) next() (*pdpPacket, error) {
 		return nil, err
 	}
 	packetSizeHistogram.Observe(float64(pdpHeaderSize + packetSize))
-	
+	packetEntropyHistogram.Observe(shannonEntropy(pkt.payload[:packetSize]))
+
 	pkt.macAddr = targetMacAddr
 	pkt.port = targetPort
 	pkt.packetSize = packetSize
