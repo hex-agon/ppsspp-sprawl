@@ -171,7 +171,6 @@ func (srv *ctlServer) houseKeeper() {
 
 			if c.group != nil {
 				srv.leaveGroupLocked(c)
-				c.group = nil
 			}
 			srv.Unlock()
 		}
@@ -218,9 +217,62 @@ func (srv *ctlServer) joinGroup(c *client, tid titledb.TitleId, id groupId) erro
 	return nil
 }
 
+func (srv *ctlServer) leaveGroup(c *client) {
+	srv.Lock()
+	defer srv.Unlock()
+
+	srv.leaveGroupLocked(c)
+}
+
 func (srv *ctlServer) leaveGroupLocked(c *client) {
 	g := c.group
+	ipAddr := c.remoteAddr4()
+
+	g.RLock()
+	var sameIpTargets []*client
+	var targetsToNotify []*client
+	for other := range g.clients {
+		if other == c {
+			continue
+		}
+		targetsToNotify = append(targetsToNotify, other)
+		if other.remoteAddr4() == ipAddr {
+			sameIpTargets = append(sameIpTargets, other)
+		}
+	}
+	g.RUnlock()
+
+	sameIpCount := len(sameIpTargets) + 1
+	disconnectPkt := &s2cClientDisconnected{ipAddr: ipAddr}
+
+	// repeat broadcast disconnecting all the clients under the same ipAddr
+	for i := 0; i < sameIpCount; i++ {
+		for _, other := range targetsToNotify {
+			if err := other.write(disconnectPkt); err != nil {
+				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
+				other.close()
+			}
+		}
+	}
+
+	for _, reconnectingClient := range sameIpTargets {
+		connectPkt := &s2cClientConnected{
+			displayName: reconnectingClient.name,
+			macAddr:     reconnectingClient.macAddr,
+			ipAddr:      reconnectingClient.remoteAddr4(),
+		}
+		for _, other := range targetsToNotify {
+			if other == reconnectingClient {
+				continue
+			}
+			if err := other.write(connectPkt); err != nil {
+				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
+				other.close()
+			}
+		}
+	}
 	emptyGroup := g.remove(c)
+	c.group = nil
 
 	if emptyGroup {
 		if groups, ok := srv.groups[g.tid]; ok {
@@ -325,10 +377,10 @@ func (srv *ctlServer) registerClient(conn net.Conn, mac pspnet.MacAddr, name psp
 		conn:      conn,
 		decoder:   packet.NewDecoder(conn, maxPacketSize),
 		encoder:   packet.NewEncoder(conn, maxPacketSize),
-		macAddr:   mac,
 		server:    srv,
-		titleId:   tid,
+		macAddr:   mac,
 		name:      name,
+		titleId:   tid,
 		txQueue:   make(chan packet.OutboundPacket, 32),
 		logger: log.With().
 			Str("ip", conn.RemoteAddr().String()).

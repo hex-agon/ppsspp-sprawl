@@ -25,8 +25,8 @@ type client struct {
 	server    *ctlServer
 	macAddr   pspnet.MacAddr
 	name      pspnet.DisplayName
-	titleId   titledb.TitleId // the titleId the client is playing
-	group     *group          // the group the client is currently in
+	titleId   titledb.TitleId
+	group     *group // This is the only mutable state in the struct
 	txQueue   chan packet.OutboundPacket
 	logger    zerolog.Logger
 }
@@ -44,68 +44,8 @@ func (c *client) close() {
 			c.logger.Warn().Err(err).Msg("[ctl] failed to close connection")
 		}
 		c.server.unregisterClient <- c
-
-		if c.group != nil {
-			broadcastDisconnect(c)
-		}
 		c.logger.Info().Msg("[ctl] client disconnected")
 	})
-}
-
-func broadcastDisconnect(c *client) {
-	// Since the protocol disconnects by ipv4 addr, we need to do a small workaround, similar to what aemu does
-	sameIpCount := 0
-	ipAddr := c.remoteAddr4()
-
-	c.group.RLock()
-	var sameIpTargets []*client
-	var targetsToNotify []*client
-	// count everyone under the same ipAddr and gather them
-	for other := range c.group.clients {
-		if other == c {
-			continue
-		}
-		targetsToNotify = append(targetsToNotify, other)
-
-		if other.remoteAddr4() == ipAddr {
-			sameIpTargets = append(sameIpTargets, other)
-		}
-	}
-	c.group.RUnlock()
-	sameIpCount = len(sameIpTargets) + 1
-
-	pkt := &s2cClientDisconnected{ipAddr: ipAddr}
-
-	// repeat broadcast disconnecting all the clients under the same ipAddr
-	for i := 0; i < sameIpCount; i++ {
-		for _, other := range targetsToNotify {
-			if other == c { // no need to notify ourselves
-				continue
-			}
-
-			if err := other.write(pkt); err != nil {
-				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
-				other.close()
-			}
-		}
-	}
-
-	for _, reconnectingClient := range sameIpTargets {
-		for _, other := range targetsToNotify {
-			if other == reconnectingClient || other == c { // no need to notify itself
-				continue
-			}
-			pkt := &s2cClientConnected{
-				displayName: reconnectingClient.name,
-				macAddr:     reconnectingClient.macAddr,
-				ipAddr:      reconnectingClient.remoteAddr4(),
-			}
-			if err := other.write(pkt); err != nil {
-				other.logger.Warn().Err(err).Msg("[ctl] group broadcast: write to client error")
-				other.close()
-			}
-		}
-	}
 }
 
 func (c *client) write(packet packet.OutboundPacket) error {
@@ -214,12 +154,12 @@ func handleConnectPacket(c *client, pkt *c2sConnect) error {
 }
 
 func handleDisconnectPacket(c *client) error {
-	c.logger.Debug().Msg("[ctl] disconnect: handing packet")
+	c.logger.Debug().Msg("[ctl] disconnect: removing client from the group")
 
 	if c.group == nil {
 		return errors.New("disconnect: client is not connected to any group")
 	}
-	c.close()
+	c.server.leaveGroup(c)
 	return nil
 }
 
@@ -227,10 +167,6 @@ func handleScanPacket(c *client) error {
 	if c.group != nil {
 		return errors.New("scan: client tried to scan while already connected to a group")
 	}
-	// finds all the available groups for the game and then reply with repeat([name] [founderMacAddr])
-	// then send scan_complete packet
-	// send scan complete
-
 	c.logger.Info().Msgf("[ctl] scan: requested scan for tileId=%s", c.titleId.String())
 
 	c.server.scanGroups(c.titleId, func(g *group) {
