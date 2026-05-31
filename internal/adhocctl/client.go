@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sprawl/internal/packet"
 	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 	"sync"
@@ -20,14 +19,14 @@ type client struct {
 	ctxCancel context.CancelFunc
 	closeOnce sync.Once
 	conn      net.Conn
-	decoder   *packet.Decoder
-	encoder   *packet.Encoder
+	decoder   *decoder
+	encoder   *encoder
 	server    *ctlServer
 	macAddr   pspnet.MacAddr
 	name      pspnet.DisplayName
 	titleId   titledb.TitleId
 	group     *group // This is the only mutable state in the struct
-	txQueue   chan packet.OutboundPacket
+	txQueue   chan outboundPacket
 	logger    zerolog.Logger
 }
 
@@ -48,7 +47,7 @@ func (c *client) close() {
 	})
 }
 
-func (c *client) write(packet packet.OutboundPacket) error {
+func (c *client) write(packet outboundPacket) error {
 	select {
 	case c.txQueue <- packet:
 		return nil
@@ -59,7 +58,7 @@ func (c *client) write(packet packet.OutboundPacket) error {
 
 func (c *client) reader() {
 	for {
-		inboundPkt, err := c.decoder.Next()
+		inboundPkt, err := c.decoder.next()
 
 		if err != nil {
 			switch {

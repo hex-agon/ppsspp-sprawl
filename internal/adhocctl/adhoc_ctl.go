@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"sprawl/internal/packet"
 	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 	"sync"
@@ -321,9 +320,9 @@ func (srv *ctlServer) waitForLoginPacket(conn net.Conn) {
 		connCloser(conn)
 		return
 	}
-	decoder := packet.NewDecoder(conn, maxPacketSize)
+	decoder := newDecoder(conn, maxPacketSize)
 
-	pkt, err := decoder.Next()
+	pkt, err := decoder.next()
 
 	if err != nil {
 		connCloser(conn)
@@ -375,13 +374,13 @@ func (srv *ctlServer) registerClient(conn net.Conn, mac pspnet.MacAddr, name psp
 		ctxCancel: cancelFunc,
 		closeOnce: sync.Once{},
 		conn:      conn,
-		decoder:   packet.NewDecoder(conn, maxPacketSize),
-		encoder:   packet.NewEncoder(conn, maxPacketSize),
+		decoder:   newDecoder(conn, maxPacketSize),
+		encoder:   newEncoder(conn, maxPacketSize),
 		server:    srv,
 		macAddr:   mac,
 		name:      name,
 		titleId:   tid,
-		txQueue:   make(chan packet.OutboundPacket, 32),
+		txQueue:   make(chan outboundPacket, 32),
 		logger: log.With().
 			Str("ip", conn.RemoteAddr().String()).
 			Str("mac", mac.String()).

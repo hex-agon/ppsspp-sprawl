@@ -1,8 +1,7 @@
-package packet
+package pspnet
 
 import (
 	"encoding/binary"
-	"sprawl/internal/pspnet"
 )
 
 type SliceReader struct {
@@ -42,7 +41,7 @@ func (r *SliceReader) Skip(n int) {
 	r.off += n
 }
 
-func (r *SliceReader) MacAddr() pspnet.MacAddr {
-	bytes := r.Bytes(pspnet.MacAddrLen)
-	return pspnet.MacAddr(bytes)
+func (r *SliceReader) MacAddr() MacAddr {
+	bytes := r.Bytes(MacAddrLen)
+	return MacAddr(bytes)
 }

@@ -3,7 +3,6 @@ package peerhub
 import (
 	"sync"
 
-	"sprawl/internal/packet"
 	"sprawl/internal/pspnet"
 )
 
@@ -30,7 +29,7 @@ func (p *p2pPacket) release() {
 }
 
 func (p *p2pPacket) writeTo(bytes []byte) (int, error) {
-	writer := packet.NewSliceWriter(bytes)
+	writer := pspnet.NewSliceWriter(bytes)
 
 	writer.Uint32(p.packetSize)
 	writer.Bytes(p.payload[:p.packetSize])
@@ -44,7 +43,7 @@ type peerAnnouncePacket struct {
 }
 
 func (p *peerAnnouncePacket) writeTo(bytes []byte) (int, error) {
-	writer := packet.NewSliceWriter(bytes)
+	writer := pspnet.NewSliceWriter(bytes)
 	writer.Bytes(p.macAddr[:])
 	writer.Skip(2)
 	writer.Uint16(p.port)

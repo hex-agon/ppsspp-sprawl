@@ -8,8 +8,8 @@ import (
 	"io"
 	"net"
 	"sprawl/internal/exchange"
-	"sprawl/internal/packet"
 	"sprawl/internal/peerhub"
+	"sprawl/internal/pspnet"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -136,7 +136,7 @@ func (srv *relayServer) handleConn(conn net.Conn) {
 	}
 	_ = conn.SetReadDeadline(time.Time{})
 
-	r := packet.NewSliceReader(initBuf)
+	r := pspnet.NewSliceReader(initBuf)
 	initPktType := initType(r.Uint32())
 	srcAddr := r.MacAddr()
 	r.Skip(2) // padding

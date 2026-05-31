@@ -1,18 +1,17 @@
 package adhocctl
 
 import (
-	"sprawl/internal/packet"
 	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 )
 
 const (
-	inboundPacketPing       packet.InboundPacketType = 0
-	inboundPacketLogin      packet.InboundPacketType = 1
-	inboundPacketConnect    packet.InboundPacketType = 2
-	inboundPacketDisconnect packet.InboundPacketType = 3
-	inboundPacketScan       packet.InboundPacketType = 4
-	inboundPacketChat       packet.InboundPacketType = 7
+	inboundPacketPing       inboundPacketType = 0
+	inboundPacketLogin      inboundPacketType = 1
+	inboundPacketConnect    inboundPacketType = 2
+	inboundPacketDisconnect inboundPacketType = 3
+	inboundPacketScan       inboundPacketType = 4
+	inboundPacketChat       inboundPacketType = 7
 
 	inboundPacketLoginSize   = 143
 	inboundPacketConnectSize = 9
@@ -20,16 +19,16 @@ const (
 )
 
 func init() {
-	packet.RegisterInboundPacket(inboundPacketPing, 0, constPacketDecoder(&c2sPing{}))
-	packet.RegisterInboundPacket(inboundPacketLogin, inboundPacketLoginSize, loginPacketDecoder)
-	packet.RegisterInboundPacket(inboundPacketConnect, inboundPacketConnectSize, connectPacketDecoder)
-	packet.RegisterInboundPacket(inboundPacketDisconnect, 0, constPacketDecoder(&c2sDisconnect{}))
-	packet.RegisterInboundPacket(inboundPacketScan, 0, constPacketDecoder(&c2sScan{}))
-	packet.RegisterInboundPacket(inboundPacketChat, inboundPacketChatSize, chatPacketDecoder)
+	registerInboundPacket(inboundPacketPing, 0, constPacketDecoder(&c2sPing{}))
+	registerInboundPacket(inboundPacketLogin, inboundPacketLoginSize, loginPacketDecoder)
+	registerInboundPacket(inboundPacketConnect, inboundPacketConnectSize, connectPacketDecoder)
+	registerInboundPacket(inboundPacketDisconnect, 0, constPacketDecoder(&c2sDisconnect{}))
+	registerInboundPacket(inboundPacketScan, 0, constPacketDecoder(&c2sScan{}))
+	registerInboundPacket(inboundPacketChat, inboundPacketChatSize, chatPacketDecoder)
 }
 
-func constPacketDecoder(pkt packet.InboundPacket) func(bytes []byte) (packet.InboundPacket, error) {
-	return func(bytes []byte) (packet.InboundPacket, error) {
+func constPacketDecoder(pkt inboundPacket) func(bytes []byte) (inboundPacket, error) {
+	return func(bytes []byte) (inboundPacket, error) {
 		return pkt, nil
 	}
 }
@@ -37,7 +36,7 @@ func constPacketDecoder(pkt packet.InboundPacket) func(bytes []byte) (packet.Inb
 type c2sPing struct {
 }
 
-func (c *c2sPing) Type() packet.InboundPacketType {
+func (c *c2sPing) Type() inboundPacketType {
 	return inboundPacketPing
 }
 
@@ -47,20 +46,20 @@ type c2sLogin struct {
 	Tid        titledb.TitleId
 }
 
-func (c *c2sLogin) Type() packet.InboundPacketType {
+func (c *c2sLogin) Type() inboundPacketType {
 	return inboundPacketLogin
 }
 
 func (c *c2sLogin) WriteTo(dst []byte) (int, error) {
-	writer := packet.NewSliceWriter(dst)
+	writer := pspnet.NewSliceWriter(dst)
 	writer.Bytes(c.ClientAddr[:])
 	writer.Bytes(c.Name[:])
 	writer.Bytes(c.Tid[:])
 	return writer.Pos(), nil
 }
 
-func loginPacketDecoder(buffer []byte) (packet.InboundPacket, error) {
-	reader := packet.NewSliceReader(buffer)
+func loginPacketDecoder(buffer []byte) (inboundPacket, error) {
+	reader := pspnet.NewSliceReader(buffer)
 
 	return &c2sLogin{
 		ClientAddr: pspnet.MacAddr(reader.Bytes(pspnet.MacAddrLen)),
@@ -73,12 +72,12 @@ type c2sConnect struct {
 	gid groupId
 }
 
-func (c *c2sConnect) Type() packet.InboundPacketType {
+func (c *c2sConnect) Type() inboundPacketType {
 	return inboundPacketConnect
 }
 
-func connectPacketDecoder(buffer []byte) (packet.InboundPacket, error) {
-	reader := packet.NewSliceReader(buffer)
+func connectPacketDecoder(buffer []byte) (inboundPacket, error) {
+	reader := pspnet.NewSliceReader(buffer)
 
 	return &c2sConnect{
 		gid: groupId(reader.Bytes(groupIdLen)),
@@ -88,14 +87,14 @@ func connectPacketDecoder(buffer []byte) (packet.InboundPacket, error) {
 type c2sDisconnect struct {
 }
 
-func (c *c2sDisconnect) Type() packet.InboundPacketType {
+func (c *c2sDisconnect) Type() inboundPacketType {
 	return inboundPacketDisconnect
 }
 
 type c2sScan struct {
 }
 
-func (c *c2sScan) Type() packet.InboundPacketType {
+func (c *c2sScan) Type() inboundPacketType {
 	return inboundPacketScan
 }
 
@@ -103,12 +102,12 @@ type c2sChat struct {
 	message []byte
 }
 
-func (c *c2sChat) Type() packet.InboundPacketType {
+func (c *c2sChat) Type() inboundPacketType {
 	return inboundPacketChat
 }
 
-func chatPacketDecoder(buffer []byte) (packet.InboundPacket, error) {
-	reader := packet.NewSliceReader(buffer)
+func chatPacketDecoder(buffer []byte) (inboundPacket, error) {
+	reader := pspnet.NewSliceReader(buffer)
 	return &c2sChat{
 		message: reader.Bytes(inboundPacketChatSize),
 	}, nil

@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"sprawl/internal/packet"
+	"sprawl/internal/pspnet"
 )
 
 type decoder struct {
@@ -25,7 +25,7 @@ func (d *decoder) next() (*p2pPacket, error) {
 		return nil, err
 	}
 
-	packetSize := packet.NewSliceReader(header).Uint32()
+	packetSize := pspnet.NewSliceReader(header).Uint32()
 
 	if packetSize > p2pMaxPacketSize {
 		return nil, fmt.Errorf("packet size %d exceeds limit %d", packetSize, p2pMaxPacketSize)

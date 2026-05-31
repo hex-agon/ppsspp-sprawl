@@ -1,4 +1,4 @@
-package packet
+package adhocctl
 
 import (
 	"bufio"
@@ -6,30 +6,30 @@ import (
 	"io"
 )
 
-type OutboundPacketType uint8
+type outboundPacketType uint8
 
-type OutboundPacketMeta struct {
+type outboundPacketMeta struct {
 	size int
 }
 
-type OutboundPacket interface {
-	Type() OutboundPacketType
+type outboundPacket interface {
+	Type() outboundPacketType
 	WriteTo(dst []byte) (int, error)
 }
 
-type Encoder struct {
+type encoder struct {
 	writer *bufio.Writer
 	buffer []byte
 }
 
-func NewEncoder(writer io.Writer, maxPacketSize int) *Encoder {
-	return &Encoder{
+func newEncoder(writer io.Writer, maxPacketSize int) *encoder {
+	return &encoder{
 		writer: bufio.NewWriter(writer),
 		buffer: make([]byte, maxPacketSize+1),
 	}
 }
 
-func (e *Encoder) WriteAndFlush(packet OutboundPacket) error {
+func (e *encoder) WriteAndFlush(packet outboundPacket) error {
 	pktType := byte(packet.Type())
 	pktMeta := outboundPacketRegistry[pktType]
 

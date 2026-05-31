@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"sprawl/internal/packet"
+	"sprawl/internal/pspnet"
 )
 
 type decoder struct {
@@ -25,7 +25,7 @@ func (d *decoder) next() (*pdpPacket, error) {
 	if _, err := io.ReadFull(d.reader, header); err != nil {
 		return nil, err
 	}
-	headerReader := packet.NewSliceReader(header)
+	headerReader := pspnet.NewSliceReader(header)
 
 	targetMacAddr := headerReader.MacAddr()
 	headerReader.Skip(2) // padding

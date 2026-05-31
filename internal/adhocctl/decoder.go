@@ -1,4 +1,4 @@
-package packet
+package adhocctl
 
 import (
 	"bufio"
@@ -6,30 +6,30 @@ import (
 	"io"
 )
 
-type InboundPacketType uint8
-type InboundPacketMeta struct {
+type inboundPacketType uint8
+type inboundPacketMeta struct {
 	size    int
-	decoder InboundPacketDecoder
+	decoder inboundPacketDecoder
 }
-type InboundPacketDecoder func([]byte) (InboundPacket, error)
+type inboundPacketDecoder func([]byte) (inboundPacket, error)
 
-type InboundPacket interface {
-	Type() InboundPacketType
+type inboundPacket interface {
+	Type() inboundPacketType
 }
 
-type Decoder struct {
+type decoder struct {
 	reader *bufio.Reader
 	buffer []byte
 }
 
-func NewDecoder(reader io.Reader, maxPacketSize int) *Decoder {
-	return &Decoder{
+func newDecoder(reader io.Reader, maxPacketSize int) *decoder {
+	return &decoder{
 		reader: bufio.NewReader(reader),
 		buffer: make([]byte, maxPacketSize),
 	}
 }
 
-func (d *Decoder) Next() (InboundPacket, error) {
+func (d *decoder) next() (inboundPacket, error) {
 	packetTypeId, err := d.reader.ReadByte()
 
 	if err != nil {

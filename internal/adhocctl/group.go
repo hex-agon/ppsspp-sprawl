@@ -2,7 +2,6 @@ package adhocctl
 
 import (
 	"bytes"
-	"sprawl/internal/packet"
 	"sprawl/internal/pspnet"
 	"sprawl/internal/titledb"
 	"sync"
@@ -82,7 +81,7 @@ func (g *group) forEach(consumer func(*client)) {
 	}
 }
 
-func (g *group) broadcast(packet packet.OutboundPacket, filter func(*client) bool) {
+func (g *group) broadcast(packet outboundPacket, filter func(*client) bool) {
 	g.forEach(func(c *client) {
 		if filter(c) {
 			if err := c.write(packet); err != nil {

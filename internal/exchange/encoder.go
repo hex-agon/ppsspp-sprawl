@@ -3,7 +3,7 @@ package exchange
 import (
 	"bufio"
 	"io"
-	"sprawl/internal/packet"
+	"sprawl/internal/pspnet"
 )
 
 type encoder struct {
@@ -19,7 +19,7 @@ func newEncoder(writer io.Writer, maxPacketSize int) *encoder {
 }
 
 func (e *encoder) writeAndFlush(pkt *pdpPacket) error {
-	writer := packet.NewSliceWriter(e.buffer)
+	writer := pspnet.NewSliceWriter(e.buffer)
 
 	writer.Bytes(pkt.macAddr[:])
 	writer.Skip(2)

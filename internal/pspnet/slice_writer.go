@@ -1,4 +1,4 @@
-package packet
+package pspnet
 
 import "encoding/binary"
 
