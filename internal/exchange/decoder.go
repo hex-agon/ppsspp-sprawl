@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"io"
 	"sprawl/internal/pspnet"
+	"sprawl/internal/telemetry"
 )
 
 type decoder struct {
-	reader *bufio.Reader
-	buffer []byte
+	reader   *bufio.Reader
+	netStats *telemetry.NetStats
+	buffer   []byte
 }
 
 func newDecoder(reader io.Reader) *decoder {
 	return &decoder{
-		reader: bufio.NewReader(reader),
-		buffer: make([]byte, pdpHeaderSize),
+		reader:   bufio.NewReader(reader),
+		netStats: telemetry.NewNetStats(5),
+		buffer:   make([]byte, pdpHeaderSize),
 	}
 }
 
@@ -40,11 +43,10 @@ func (d *decoder) next() (*pdpPacket, error) {
 		pkt.release()
 		return nil, err
 	}
-	packetSizeHistogram.Observe(float64(pdpHeaderSize + packetSize))
-	packetEntropyHistogram.Observe(shannonEntropy(pkt.payload[:packetSize]))
-
 	pkt.macAddr = targetMacAddr
 	pkt.port = targetPort
 	pkt.packetSize = packetSize
+
+	d.netStats.ObservePacket(packetSize)
 	return pkt, nil
 }

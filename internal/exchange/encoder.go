@@ -4,17 +4,20 @@ import (
 	"bufio"
 	"io"
 	"sprawl/internal/pspnet"
+	"sprawl/internal/telemetry"
 )
 
 type encoder struct {
-	writer *bufio.Writer
-	buffer []byte
+	writer   *bufio.Writer
+	netStats *telemetry.NetStats
+	buffer   []byte
 }
 
 func newEncoder(writer io.Writer, maxPacketSize int) *encoder {
 	return &encoder{
-		writer: bufio.NewWriter(writer),
-		buffer: make([]byte, maxPacketSize),
+		writer:   bufio.NewWriter(writer),
+		netStats: telemetry.NewNetStats(5),
+		buffer:   make([]byte, maxPacketSize),
 	}
 }
 
@@ -28,6 +31,7 @@ func (e *encoder) writeAndFlush(pkt *pdpPacket) error {
 	writer.Bytes(pkt.payload[:pkt.packetSize])
 
 	n := writer.Pos()
+	e.netStats.ObservePacket(uint32(n))
 
 	if _, err := e.writer.Write(e.buffer[:n]); err != nil {
 		return err

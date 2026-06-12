@@ -19,11 +19,6 @@ var (
 		Name: "sprawl_hub_peers_tx_bytes",
 		Help: "The number of bytes written by peers.",
 	})
-	packetSizeHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "sprawl_hub_packet_size_bytes",
-		Help:    "The size of packets flowing through the peerhub decoder.",
-		Buckets: []float64{32, 64, 128, 256, 512, 1024, 2048, 4096},
-	})
 )
 
 func init() {
@@ -32,6 +27,5 @@ func init() {
 		connectedPeersCount,
 		peersRxBytes,
 		peersTxBytes,
-		packetSizeHistogram,
 	)
 }

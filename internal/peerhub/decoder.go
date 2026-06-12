@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"io"
 	"sprawl/internal/pspnet"
+	"sprawl/internal/telemetry"
 )
 
 type decoder struct {
-	reader *bufio.Reader
-	buffer []byte
+	reader   *bufio.Reader
+	netStats *telemetry.NetStats
+	buffer   []byte
 }
 
 func newDecoder(reader io.Reader) *decoder {
 	return &decoder{
-		reader: bufio.NewReader(reader),
-		buffer: make([]byte, p2pHeaderSize),
+		reader:   bufio.NewReader(reader),
+		netStats: telemetry.NewNetStats(5),
+		buffer:   make([]byte, p2pHeaderSize),
 	}
 }
 
@@ -37,8 +40,8 @@ func (d *decoder) next() (*p2pPacket, error) {
 		return nil, err
 	}
 	totalSize := float64(p2pHeaderSize + packetSize)
-	packetSizeHistogram.Observe(totalSize)
 	peersRxBytes.Add(totalSize)
+	d.netStats.ObservePacket(uint32(totalSize))
 
 	pkt.packetSize = packetSize
 	return pkt, nil
