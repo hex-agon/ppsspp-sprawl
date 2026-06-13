@@ -87,7 +87,7 @@ func (srv *ctlServer) houseKeeper() {
 			srv.Lock()
 			if _, ok := srv.clients[c.macAddr]; ok {
 				delete(srv.clients, c.macAddr)
-				clientsCount.Dec()
+				clientsCount.WithLabelValues(c.titleId.String()).Dec()
 			}
 
 			if c.group != nil {
@@ -307,7 +307,7 @@ func (srv *ctlServer) registerClient(conn net.Conn, mac pspnet.MacAddr, name psp
 	}
 
 	srv.clients[mac] = c
-	clientsCount.Inc()
+	clientsCount.WithLabelValues(c.titleId.String()).Inc()
 
 	go c.reader()
 	go c.writer()
