@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"sprawl/internal/pspnet"
+	"sprawl/internal/telemetry"
 	"sprawl/internal/titledb"
 	"sync"
 	"syscall"
@@ -198,6 +199,11 @@ func handleChatPacket(c *client, pkt *c2sChat) error {
 		displayName: c.name,
 	}
 	c.group.broadcast(chatBroadcast, func(other *client) bool { return c != other })
+	telemetry.RecordChatMessage(&telemetry.ChatMessageEvent{
+		MacAddr:     c.macAddr,
+		DisplayName: c.name.String(),
+		Message:     pkt.message,
+	})
 	return nil
 }
 
