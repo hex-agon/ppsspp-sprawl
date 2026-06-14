@@ -19,7 +19,7 @@ func init() {
 	registerOutboundPacket(outboundPacketScanResponse, 14)
 	registerOutboundPacket(outboundPacketScanComplete, 0)
 	registerOutboundPacket(outboundPacketConnectBssid, 6)
-	registerOutboundPacket(outboundPacketChat, 193)
+	registerOutboundPacket(outboundPacketChat, 192)
 }
 
 type s2cScanReply struct {
@@ -106,7 +106,7 @@ func (s *s2cChat) Type() outboundPacketType {
 
 func (s *s2cChat) WriteTo(dst []byte) (int, error) {
 	writer := pspnet.NewSliceWriter(dst)
-	writer.Bytes(s.displayName[:])
 	writer.Bytes(s.message)
+	writer.Bytes(s.displayName[:])
 	return writer.Pos(), nil
 }

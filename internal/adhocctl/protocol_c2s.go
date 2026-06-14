@@ -15,7 +15,7 @@ const (
 
 	inboundPacketLoginSize   = 143
 	inboundPacketConnectSize = 9
-	inboundPacketChatSize    = 65
+	inboundPacketChatSize    = 64
 )
 
 func init() {
