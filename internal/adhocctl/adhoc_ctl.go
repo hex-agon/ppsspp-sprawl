@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/time/rate"
 )
 
 const maxPacketSize = 1024
@@ -298,6 +299,7 @@ func (srv *ctlServer) registerClient(conn net.Conn, mac pspnet.MacAddr, name psp
 			Str("mac", mac.String()).
 			Str("name", name.String()).
 			Logger(),
+		chatRateLimiter: rate.NewLimiter(rate.Every(500*time.Millisecond), 5),
 	}
 
 	if _, ok := srv.clients[mac]; ok {

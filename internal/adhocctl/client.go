@@ -13,22 +13,24 @@ import (
 	"syscall"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/time/rate"
 )
 
 type client struct {
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-	closeOnce sync.Once
-	conn      net.Conn
-	decoder   *decoder
-	encoder   *encoder
-	server    *ctlServer
-	macAddr   pspnet.MacAddr
-	name      pspnet.DisplayName
-	titleId   titledb.TitleId
-	group     *group // This is the only mutable state in the struct
-	txQueue   chan outboundPacket
-	logger    zerolog.Logger
+	ctx             context.Context
+	ctxCancel       context.CancelFunc
+	closeOnce       sync.Once
+	conn            net.Conn
+	decoder         *decoder
+	encoder         *encoder
+	server          *ctlServer
+	macAddr         pspnet.MacAddr
+	name            pspnet.DisplayName
+	titleId         titledb.TitleId
+	group           *group // This is the only mutable state in the struct
+	txQueue         chan outboundPacket
+	logger          zerolog.Logger
+	chatRateLimiter *rate.Limiter
 }
 
 func (c *client) remoteAddr4() uint32 {
@@ -192,6 +194,10 @@ func handleChatPacket(c *client, pkt *c2sChat) error {
 
 	if c.group == nil {
 		return errors.New("chat: client is not connected to any group")
+	}
+
+	if !c.chatRateLimiter.Allow() {
+		return nil
 	}
 
 	chatBroadcast := &s2cChat{
