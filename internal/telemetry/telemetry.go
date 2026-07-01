@@ -11,6 +11,7 @@ func Init(collector Collector) {
 type ChatMessageEvent struct {
 	MacAddr     pspnet.MacAddr `json:"mac_addr"`
 	DisplayName string         `json:"display_name"`
+	TitleId     string         `json:"title_id"`
 	Message     []byte         `json:"message"`
 }
 

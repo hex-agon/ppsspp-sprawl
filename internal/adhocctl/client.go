@@ -208,6 +208,7 @@ func handleChatPacket(c *client, pkt *c2sChat) error {
 	telemetry.RecordChatMessage(&telemetry.ChatMessageEvent{
 		MacAddr:     c.macAddr,
 		DisplayName: c.name.String(),
+		TitleId:     c.titleId.String(),
 		Message:     pkt.message,
 	})
 	return nil
