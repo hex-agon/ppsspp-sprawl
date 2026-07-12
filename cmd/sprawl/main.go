@@ -32,21 +32,38 @@ func main() {
 	metricsPort := flag.String("metrics-port", "8081", "port to listen on for metrics")
 	nodeName := flag.String("node-name", "local", "node name")
 	amqpURL := flag.String("amqp-url", "", "amqp url for telemetry")
+	logLevel := flag.String("log-level", "info", "log level")
 	flag.Parse()
 
 	var amqpCollector *telemetry.AmqpCollector
+	var defaultLogLevel = zerolog.DebugLevel
 
 	if *env == "prod" {
 		if *nodeName == "local" {
 			log.Fatal().Msg("node name must not be local in prov env")
 		}
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-		if *amqpURL != "" {
-			amqpCollector = telemetry.NewAmqpCollector(*amqpURL, *nodeName)
-			telemetry.Init(amqpCollector)
-		}
+		defaultLogLevel = zerolog.InfoLevel
 	} else {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"})
+	}
+	switch *logLevel {
+	case "debug":
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case "info":
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case "warn":
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case "error":
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	case "fatal":
+		zerolog.SetGlobalLevel(zerolog.FatalLevel)
+	default:
+		zerolog.SetGlobalLevel(defaultLogLevel)
+	}
+
+	if *amqpURL != "" {
+		amqpCollector = telemetry.NewAmqpCollector(*amqpURL, *nodeName)
+		telemetry.Init(amqpCollector)
 	}
 	var ctlServer adhocctl.Server
 	var relayServer sprawl.Server

@@ -169,7 +169,7 @@ func handleScanPacket(c *client) error {
 	if c.group != nil {
 		return errors.New("scan: client tried to scan while already connected to a group")
 	}
-	c.logger.Info().Msgf("[ctl] scan: requested scan for tileId=%s", c.titleId.String())
+	c.logger.Debug().Msgf("[ctl] scan: requested scan for tileId=%s", c.titleId.String())
 
 	c.server.scanGroups(c.titleId, func(g *group) {
 		scanReply := &s2cScanReply{
