@@ -7,12 +7,14 @@ import (
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/rs/zerolog"
 )
 
-var ErrClientDisconnected = errors.New("client disconnected")
+var ErrClientClosed = errors.New("client closed")
+var ErrClientTxQueueFull = errors.New("client tx queue full")
 
 type client struct {
 	exchange   *Exchange
@@ -22,6 +24,8 @@ type client struct {
 	ctx        context.Context
 	ctxCancel  context.CancelFunc
 	closeOnce  sync.Once
+	closed     atomic.Bool
+	writerDone chan struct{}
 	txQueue    chan *pdpPacket
 	macAddr    pspnet.MacAddr
 	port       uint16
@@ -30,40 +34,37 @@ type client struct {
 }
 
 func (c *client) close() {
-	drainTxQueue := func() {
-		for {
-			select {
-			case pkt := <-c.txQueue:
-				pkt.release()
-			default:
-				return
-			}
-		}
-	}
+	go c.closeOnce.Do(func() {
+		// immediately queue to unregister so no more packets are routed
+		c.exchange.unregister <- c
 
-	c.closeOnce.Do(func() {
+		c.closed.Store(true)
 		c.ctxCancel()
-		drainTxQueue()
+
+		// wait for writer to be done
+		<-c.writerDone
 
 		if err := c.conn.Close(); err != nil {
 			c.logger.Warn().
 				Err(err).
 				Msg("[exchange] failed to close connection")
 		}
-		c.exchange.unregister <- c
 
 		c.logger.Info().Msg("[exchange] client disconnected")
 	})
 }
 
 func (c *client) write(pkt *pdpPacket) error {
+	// there's still a data race here that we're trying to mitigate by unregistering the client earlier in the close sequence
+	if c.closed.Load() {
+		return ErrClientClosed
+	}
+
 	select {
-	case <-c.ctx.Done():
-		return ErrClientDisconnected
 	case c.txQueue <- pkt:
 		return nil
 	default:
-		return errors.New("writer: tx queue full")
+		return ErrClientTxQueueFull
 	}
 }
 
@@ -85,7 +86,6 @@ func (c *client) reader() {
 		targetMacAddr := pkt.macAddr
 		targetPort := pkt.port
 
-		// Re-route the pdp packet
 		pkt.macAddr = c.macAddr
 		pkt.port = c.port
 
@@ -94,6 +94,21 @@ func (c *client) reader() {
 }
 
 func (c *client) writer() {
+	drainTxQueue := func() {
+		for {
+			select {
+			case pkt := <-c.txQueue:
+				pkt.release()
+			default:
+				return
+			}
+		}
+	}
+
+	defer func() {
+		drainTxQueue()
+		close(c.writerDone)
+	}()
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -103,10 +118,10 @@ func (c *client) writer() {
 				c.logger.Warn().Err(err).Msg("[exchange] writer: failed to write data to the client")
 				pkt.release()
 				c.close()
-				continue
+				return
 			}
-			pkt.release()
 			clientsTxBytes.Add(float64(pdpHeaderSize + pkt.packetSize))
+			pkt.release()
 		}
 	}
 }

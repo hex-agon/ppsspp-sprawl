@@ -6,6 +6,7 @@ import (
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog/log"
 )
@@ -106,6 +107,8 @@ func (ex *Exchange) RegisterClient(conn net.Conn, macAddr pspnet.MacAddr, port u
 		ctx:        cancellableCtx,
 		ctxCancel:  cancelFunc,
 		closeOnce:  sync.Once{},
+		closed:     atomic.Bool{},
+		writerDone: make(chan struct{}),
 		txQueue:    make(chan *pdpPacket, 16),
 		macAddr:    macAddr,
 		port:       port,
@@ -129,7 +132,7 @@ func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16,
 
 	if c := ex.findClient(key); c != nil {
 		if err := c.write(pkt); err != nil {
-			if !errors.Is(err, ErrClientDisconnected) {
+			if !errors.Is(err, ErrClientClosed) {
 				c.logger.Warn().Err(err).Msg("[exchange] failed to write packet")
 			}
 			pkt.release()
