@@ -138,16 +138,16 @@ func (hub *PeerHub) houseKeeper() {
 func (hub *PeerHub) registerPeer(conn net.Conn, macAddr pspnet.MacAddr, port uint16, pType peerType) *peer {
 	ctx, cancelFunc := context.WithCancel(hub.ctx)
 	p := &peer{
-		hub:       hub,
-		conn:      conn,
-		ctx:       ctx,
-		ctxCancel: cancelFunc,
-		closeOnce: sync.Once{},
-		txQueue:   make(chan p2pOutboundPacket, 16),
-		macAddr:   macAddr,
-		port:      port,
-		key:       newPeerKey(macAddr, port),
-		peerType:  pType,
+		hub:        hub,
+		conn:       conn,
+		ctx:        ctx,
+		ctxCancel:  cancelFunc,
+		writerDone: make(chan struct{}),
+		txQueue:    make(chan p2pOutboundPacket, 16),
+		macAddr:    macAddr,
+		port:       port,
+		key:        newPeerKey(macAddr, port),
+		peerType:   pType,
 		logger: log.With().
 			Str("ip", conn.RemoteAddr().String()).
 			Str("mac", macAddr.String()).

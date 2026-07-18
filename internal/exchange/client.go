@@ -38,7 +38,6 @@ func (c *client) close() {
 		// immediately queue to unregister so no more packets are routed
 		c.exchange.unregister <- c
 
-		c.closed.Store(true)
 		c.ctxCancel()
 
 		// wait for writer to be done
@@ -55,11 +54,6 @@ func (c *client) close() {
 }
 
 func (c *client) write(pkt *pdpPacket) error {
-	// there's still a data race here that we're trying to mitigate by unregistering the client earlier in the close sequence
-	if c.closed.Load() {
-		return ErrClientClosed
-	}
-
 	select {
 	case c.txQueue <- pkt:
 		return nil

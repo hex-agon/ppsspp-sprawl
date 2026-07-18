@@ -57,41 +57,26 @@ func (key *peerKey) String() string {
 }
 
 type peer struct {
-	hub       *PeerHub
-	conn      net.Conn
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-	closeOnce sync.Once
-	txQueue   chan p2pOutboundPacket
-	macAddr   pspnet.MacAddr
-	port      uint16
-	key       peerKey
-	peerType  peerType
-	peer      *peer
-	logger    zerolog.Logger
-	encoder   *encoder
-	decoder   *decoder
+	hub        *PeerHub
+	conn       net.Conn
+	ctx        context.Context
+	ctxCancel  context.CancelFunc
+	closeOnce  sync.Once
+	writerDone chan struct{}
+	txQueue    chan p2pOutboundPacket
+	macAddr    pspnet.MacAddr
+	port       uint16
+	key        peerKey
+	peerType   peerType
+	peer       *peer
+	logger     zerolog.Logger
+	encoder    *encoder
+	decoder    *decoder
 }
 
 func (p *peer) close() {
-	drainTxQueue := func() {
-		for {
-			select {
-			case pkt := <-p.txQueue:
-				pkt.release()
-			default:
-				return
-			}
-		}
-	}
-
 	p.closeOnce.Do(func() {
-		p.ctxCancel()
-		drainTxQueue()
-
-		if err := p.conn.Close(); err != nil {
-			p.logger.Err(err).Msg("[hub] failed to close connection")
-		}
+		// immediately queue to unregister so no more packets are routed
 		p.hub.unregister <- p
 
 		if p.peer != nil {
@@ -99,6 +84,13 @@ func (p *peer) close() {
 			p.peer = nil
 			other.peer = nil
 			other.close()
+		}
+		p.ctxCancel()
+
+		// wait for writer to be done
+		<-p.writerDone
+		if err := p.conn.Close(); err != nil {
+			p.logger.Err(err).Msg("[hub] failed to close connection")
 		}
 
 		p.logger.Info().Msg("[hub] peer disconnected")
@@ -148,6 +140,21 @@ func (p *peer) reader() {
 }
 
 func (p *peer) writer() {
+	drainTxQueue := func() {
+		for {
+			select {
+			case pkt := <-p.txQueue:
+				pkt.release()
+			default:
+				return
+			}
+		}
+	}
+	defer func() {
+		drainTxQueue()
+		close(p.writerDone)
+	}()
+
 	for {
 		select {
 		case <-p.ctx.Done():
