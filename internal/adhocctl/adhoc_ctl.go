@@ -280,6 +280,18 @@ func (srv *ctlServer) registerClient(conn net.Conn, mac pspnet.MacAddr, name psp
 	srv.Lock()
 	defer srv.Unlock()
 
+	if _, ok := srv.clients[mac]; ok {
+		log.Warn().Str("mac", mac.String()).Msg("[ctl] duplicate client connection detected")
+
+		if err := conn.Close(); err != nil {
+			log.Warn().
+				Err(err).
+				Str("ip", conn.RemoteAddr().String()).
+				Str("mac", mac.String()).
+				Msg("[ctl] failed to close connection")
+		}
+		return
+	}
 	ctx, cancelFunc := context.WithCancel(srv.ctx)
 
 	c := &client{
@@ -301,13 +313,6 @@ func (srv *ctlServer) registerClient(conn net.Conn, mac pspnet.MacAddr, name psp
 			Logger(),
 		chatRateLimiter: rate.NewLimiter(rate.Every(500*time.Millisecond), 5),
 	}
-
-	if _, ok := srv.clients[mac]; ok {
-		c.logger.Warn().Msg("[ctl] duplicate client connection detected")
-		c.close()
-		return
-	}
-
 	srv.clients[mac] = c
 	clientsCount.WithLabelValues(c.titleId.String()).Inc()
 
