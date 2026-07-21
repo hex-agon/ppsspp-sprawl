@@ -1,21 +1,23 @@
 package exchange
 
 import (
-	"bufio"
-	"io"
+	"net"
 	"sprawl/internal/pspnet"
 	"sprawl/internal/telemetry"
+	"time"
 )
 
+const writeTimeout = 2 * time.Second
+
 type encoder struct {
-	writer   *bufio.Writer
+	conn     net.Conn
 	netStats *telemetry.NetStats
 	buffer   []byte
 }
 
-func newEncoder(writer io.Writer, maxPacketSize int) *encoder {
+func newEncoder(conn net.Conn, maxPacketSize int) *encoder {
 	return &encoder{
-		writer:   bufio.NewWriter(writer),
+		conn:     conn,
 		netStats: telemetry.NewNetStats(5),
 		buffer:   make([]byte, maxPacketSize),
 	}
@@ -33,8 +35,12 @@ func (e *encoder) writeAndFlush(pkt *pdpPacket) error {
 	n := writer.Pos()
 	e.netStats.ObservePacket(uint32(n))
 
-	if _, err := e.writer.Write(e.buffer[:n]); err != nil {
+	if err := e.conn.SetDeadline(time.Now().Add(writeTimeout)); err != nil {
 		return err
 	}
-	return e.writer.Flush()
+
+	if _, err := e.conn.Write(e.buffer[:n]); err != nil {
+		return err
+	}
+	return nil
 }

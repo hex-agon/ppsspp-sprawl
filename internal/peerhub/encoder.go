@@ -1,20 +1,22 @@
 package peerhub
 
 import (
-	"bufio"
-	"io"
+	"net"
 	"sprawl/internal/telemetry"
+	"time"
 )
 
+const writeTimeout = 2 * time.Second
+
 type encoder struct {
-	writer   *bufio.Writer
+	conn     net.Conn
 	netStats *telemetry.NetStats
 	buffer   []byte
 }
 
-func newEncoder(writer io.Writer) *encoder {
+func newEncoder(conn net.Conn) *encoder {
 	return &encoder{
-		writer:   bufio.NewWriter(writer),
+		conn:     conn,
 		netStats: telemetry.NewNetStats(5),
 		buffer:   make([]byte, p2pHeaderSize+p2pMaxPacketSize),
 	}
@@ -26,10 +28,15 @@ func (e *encoder) writeAndFlush(pkt p2pOutboundPacket) error {
 	if err != nil {
 		return err
 	}
-	if _, err = e.writer.Write(e.buffer[:n]); err != nil {
-		return err
-	}
 	peersTxBytes.Add(float64(n))
 	e.netStats.ObservePacket(uint32(n))
-	return e.writer.Flush()
+
+	if err := e.conn.SetDeadline(time.Now().Add(writeTimeout)); err != nil {
+		return err
+	}
+
+	if _, err = e.conn.Write(e.buffer[:n]); err != nil {
+		return err
+	}
+	return nil
 }

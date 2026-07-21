@@ -152,6 +152,7 @@ func (hub *PeerHub) registerPeer(conn net.Conn, macAddr pspnet.MacAddr, port uin
 			Str("ip", conn.RemoteAddr().String()).
 			Str("mac", macAddr.String()).
 			Str("peerType", pType.String()).
+			Uint16("port", port).
 			Logger(),
 		encoder: newEncoder(conn),
 		decoder: newDecoder(conn),
