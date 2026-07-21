@@ -5,53 +5,88 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Sprawl Status</title>
         <style>
+            :root {
+                --bg-body: #101014;
+                --bg-card: #1b1b20;
+                --bg-card-hover: #22222a;
+                --bg-elevated: #26262e;
+                --bg-overlay-backdrop: rgba(5, 5, 8, 0.88);
+                --bg-overlay-content: #1c1c22;
+                --border: #303038;
+                --border-light: #3a3a44;
+                --text-primary: #f2f2f5;
+                --text-secondary: #a8a8b3;
+                --text-muted: #7a7a85;
+                --accent: #4da8ff;
+                --accent-dark: #2f8ae0;
+                --accent-soft: rgba(77, 168, 255, 0.15);
+                --radius-sm: 6px;
+                --radius-md: 10px;
+                --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
+                --shadow-overlay: 0 20px 50px rgba(0, 0, 0, 0.6);
+            }
+
             * {
                 box-sizing: border-box;
             }
 
             body {
-                background-color: #121212;
-                color: #e0e0e0;
+                background-color: var(--bg-body);
+                color: var(--text-primary);
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 margin: 0;
-                padding: 20px;
+                padding: 24px;
             }
 
             h1 {
-                color: #ffffff;
-                margin-bottom: 5px;
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 12px;
+                color: var(--text-primary);
+                font-size: 1.6rem;
+                margin: 0 0 6px;
             }
 
             .summary {
-                margin-bottom: 20px;
-                color: #b0b0b0;
+                margin-bottom: 24px;
+                color: var(--text-secondary);
             }
 
             .title-list-container {
-                display: flex;
-                flex-direction: row;
-                flex-wrap: wrap;
-                gap: 15px;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+                gap: 16px;
             }
 
             .title-card {
-                flex-basis: calc(33.333% - 15px);
-                flex-grow: 1;
-                max-width: calc(33.333% - 8px);
-                min-width: 300px;
-                background-color: #1e1e1e;
-                border: 1px solid #333333;
-                transition: background-color 0.2s;
-                height: fit-content;
+                display: flex;
+                border-radius: var(--radius-md);
+                box-shadow: var(--shadow-card);
                 cursor: pointer;
+                height: 100%;
             }
 
-            .title-card:hover {
-                background-color: #252525;
+            .title-card-inner {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                background-color: var(--bg-card);
+                border: 1px solid var(--border);
+                border-radius: var(--radius-md);
+                overflow: hidden;
+                transition: background-color 0.2s, border-color 0.2s, transform 0.15s;
+            }
+
+            .title-card:hover .title-card-inner {
+                background-color: var(--bg-card-hover);
+                border-color: var(--border-light);
+                transform: translateY(-2px);
             }
 
             .title-header {
                 display: flex;
+                flex: 1;
                 gap: 15px;
                 align-items: flex-start;
                 padding: 15px;
@@ -60,33 +95,40 @@
             .title-image {
                 width: 144px;
                 height: 80px;
-                background-color: #333333;
+                background-color: var(--bg-elevated);
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
-                color: #666666;
+                color: var(--text-muted);
                 font-size: 12px;
-                border: 1px solid #444444;
+                border: 1px solid var(--border-light);
+                border-radius: var(--radius-sm);
                 background-size: cover;
                 background-position: center;
             }
 
             .title-info {
                 flex-grow: 1;
+                min-width: 0;
             }
 
             .title-name {
-                font-size: 1.2rem;
-                font-weight: bold;
-                color: #ffffff;
+                font-size: 1.15rem;
+                font-weight: 600;
+                color: var(--text-primary);
                 margin: 0;
+                overflow-wrap: anywhere;
+                word-break: break-word;
+                line-height: 1.3;
             }
 
             .title-meta {
-                font-size: 0.9rem;
-                color: #aaaaaa;
-                margin-top: 4px;
+                font-size: 0.85rem;
+                color: var(--text-secondary);
+                margin-top: 6px;
+                overflow-wrap: anywhere;
+                word-break: break-word;
             }
 
             .title-card.open .groups-overlay {
@@ -99,105 +141,130 @@
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background-color: rgba(0, 0, 0, 0.85);
+                background-color: var(--bg-overlay-backdrop);
                 z-index: 1000;
                 display: none;
                 justify-content: center;
                 align-items: center;
                 cursor: default;
+                padding: 20px;
             }
 
             .overlay-content {
-                background-color: #1e1e1e;
-                border: 1px solid #333333;
+                background-color: var(--bg-overlay-content);
+                border: 1px solid var(--border);
+                border-radius: var(--radius-md);
                 width: 90%;
-                max-width: 800px;
+                max-width: 900px;
                 max-height: 90vh;
                 overflow-y: auto;
                 position: relative;
-                padding: 20px;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+                padding: 24px;
+                box-shadow: var(--shadow-overlay);
             }
 
             .close-button {
                 position: absolute;
-                top: 15px;
-                right: 20px;
-                font-size: 24px;
-                color: #aaaaaa;
+                top: 14px;
+                right: 18px;
+                font-size: 26px;
+                color: var(--text-secondary);
                 cursor: pointer;
                 transition: color 0.2s;
                 line-height: 1;
             }
 
             .close-button:hover {
-                color: #ffffff;
+                color: var(--text-primary);
+            }
+
+            .overlay-title {
+                margin: 0;
+                padding-right: 30px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid var(--border);
+                overflow-wrap: anywhere;
+                word-break: break-word;
+            }
+
+            .overlay-meta {
+                margin: 10px 0 20px;
+                color: var(--text-secondary);
+            }
+
+            .groups-list-title {
+                margin: 0 0 12px;
+                color: var(--text-secondary);
+                font-size: 0.95rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
             }
 
             .groups-list {
-                margin: 0;
-                display: flex;
-                flex-direction: row;
-                flex-wrap: wrap;
-                gap: 15px;
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+                gap: 12px;
             }
 
             .group-item {
-                flex-basis: calc(50% - 7.5px);
-                max-width: calc(50% - 7.5px);
-                min-width: 200px;
-                background-color: #2a2a2a;
-                padding: 10px;
-                border-left: 3px solid #007acc;
+                display: flex;
+                flex-direction: column;
+                background-color: var(--bg-elevated);
+                border-radius: var(--radius-sm);
+                border-left: 3px solid var(--accent);
+                padding: 12px;
             }
 
             .group-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 5px;
+                margin-bottom: 10px;
             }
 
             .group-id {
-                font-weight: bold;
+                font-weight: 600;
                 font-size: 0.9rem;
-                color: #00aaff;
+                color: var(--accent);
             }
 
             .group-uptime {
                 font-size: 0.8rem;
-                color: #888888;
+                color: var(--text-muted);
+                font-family: 'Consolas', 'Courier New', monospace;
             }
 
             .player-list {
+                list-style: none;
                 margin: 0;
-                padding-left: 20px;
+                padding: 0;
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+                gap: 6px;
+            }
+
+            .player-list li {
+                background-color: var(--bg-card);
+                border: 1px solid var(--border);
+                border-radius: var(--radius-sm);
+                padding: 6px 10px;
                 font-size: 0.85rem;
-                color: #cccccc;
+                color: var(--text-secondary);
+                text-align: center;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
 
             .total-players-badge {
-                background-color: #007acc;
-                color: white;
-                padding: 2px 8px;
-                border-radius: 4px;
-                font-size: 0.9rem;
-                margin-left: 10px;
-            }
-
-            .overlay-title {
-                margin-top: 0;
-                border-bottom: 1px solid #333333;
-                padding-bottom: 10px;
-            }
-
-            .overlay-meta {
-                margin-bottom: 20px;
-            }
-
-            .groups-list-title {
-                width: 100%;
-                margin-top: 0;
+                background-color: var(--accent-soft);
+                color: var(--accent);
+                border: 1px solid var(--accent-dark);
+                padding: 3px 10px;
+                border-radius: 999px;
+                font-size: 0.85rem;
+                font-weight: 600;
             }
         </style>
         <script>
@@ -262,12 +329,14 @@
         <div class="title-list-container">
             {{range .Titles}}
                 <div class="title-card">
-                    <div class="title-header">
-                        <div class="title-image"
-                             style="background-image: url('https://static.sprawl-relay.link/titledb/{{.TitleID}}.png'), url('https://static.sprawl-relay.link/titledb/placeholder.jpg');"></div>
-                        <div class="title-info">
-                            <p class="title-name">{{if .Name}}{{.Name}}{{else}}Unknown Title{{end}}</p>
-                            <p class="title-meta">{{.TitleID}} | {{.TitleRegion}} | {{.PlayerCount}} Players</p>
+                    <div class="title-card-inner">
+                        <div class="title-header">
+                            <div class="title-image"
+                                 style="background-image: url('https://static.sprawl-relay.link/titledb/{{.TitleID}}.png'), url('https://static.sprawl-relay.link/titledb/placeholder.jpg');"></div>
+                            <div class="title-info">
+                                <p class="title-name">{{if .Name}}{{.Name}}{{else}}Unknown Title{{end}}</p>
+                                <p class="title-meta">{{.TitleID}} | {{.TitleRegion}} | {{.PlayerCount}} Players</p>
+                            </div>
                         </div>
                     </div>
                     <div class="groups-overlay">
@@ -277,8 +346,8 @@
                             <p class="title-meta overlay-meta">{{.TitleID}} | {{.TitleRegion}} | {{.PlayerCount}}
                                 Players</p>
 
+                            <h4 class="groups-list-title">Active Groups ({{len .Groups}})</h4>
                             <div class="groups-list">
-                                <h4 class="groups-list-title">Active Groups ({{len .Groups}}):</h4>
                                 {{range .Groups}}
                                     <div class="group-item" data-created-at="{{.CreatedAt}}">
                                         <div class="group-header">
