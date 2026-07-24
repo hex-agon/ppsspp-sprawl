@@ -31,7 +31,7 @@ func (e *encoder) writeAndFlush(pkt p2pOutboundPacket) error {
 	peersTxBytes.Add(float64(n))
 	e.netStats.ObservePacket(uint32(n))
 
-	if err := e.conn.SetDeadline(time.Now().Add(writeTimeout)); err != nil {
+	if err := e.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 		return err
 	}
 
