@@ -55,7 +55,8 @@
 
             .title-list-container {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(480px, 600px));
+                justify-content: center;
                 gap: 16px;
             }
 
@@ -65,6 +66,7 @@
                 box-shadow: var(--shadow-card);
                 cursor: pointer;
                 height: 100%;
+                max-width: 600px;
             }
 
             .title-card-inner {
