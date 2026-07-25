@@ -2,7 +2,6 @@ package exchange
 
 import (
 	"context"
-	"errors"
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
@@ -89,6 +88,7 @@ func (ex *Exchange) houseKeeper() {
 			if _, ok := ex.clients[cli.routingKey]; ok {
 				delete(ex.clients, cli.routingKey)
 				clientsCount.Dec()
+				cli.logger.Info().Msg("[exchange] unregistered client")
 			}
 			ex.Unlock()
 		}
@@ -132,9 +132,7 @@ func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16,
 
 	if c := ex.findClient(key); c != nil {
 		if err := c.write(pkt); err != nil {
-			if !errors.Is(err, ErrClientClosed) {
-				c.logger.Warn().Err(err).Msg("[exchange] failed to write packet")
-			}
+			c.logger.Warn().Err(err).Msg("[exchange] failed to write packet")
 			pkt.release()
 			c.close()
 		}

@@ -10,7 +10,9 @@ import (
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -35,6 +37,7 @@ func (t peerType) String() string {
 }
 
 var ErrPeerDisconnected = errors.New("peer disconnected")
+var ErrPeerTxQueueFull = errors.New("peer tx queue is full")
 
 type peerKey [8]byte
 
@@ -62,6 +65,7 @@ type peer struct {
 	ctx        context.Context
 	ctxCancel  context.CancelFunc
 	closeOnce  sync.Once
+	closed     atomic.Bool
 	writerDone chan struct{}
 	txQueue    chan p2pOutboundPacket
 	macAddr    pspnet.MacAddr
@@ -78,6 +82,7 @@ func (p *peer) close() {
 	p.closeOnce.Do(func() {
 		// immediately queue to unregister so no more packets are routed
 		p.hub.unregister <- p
+		p.closed.Store(true)
 
 		if p.peer != nil {
 			other := p.peer
@@ -87,8 +92,16 @@ func (p *peer) close() {
 		}
 		p.ctxCancel()
 
-		// wait for writer to be done
-		<-p.writerDone
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+
+		select {
+		case <-p.writerDone:
+		case <-timer.C:
+			p.logger.Warn().Msg("timeout waiting for writer to close, closing connection")
+			break
+		}
+
 		if err := p.conn.Close(); err != nil {
 			p.logger.Err(err).Msg("[hub] failed to close connection")
 		}
@@ -98,13 +111,16 @@ func (p *peer) close() {
 }
 
 func (p *peer) write(pkt p2pOutboundPacket) error {
+	if p.closed.Load() {
+		return ErrPeerDisconnected
+	}
 	select {
 	case <-p.ctx.Done():
 		return ErrPeerDisconnected
 	case p.txQueue <- pkt:
 		return nil
 	default:
-		return errors.New("writer: tx queue full")
+		return ErrPeerTxQueueFull
 	}
 }
 

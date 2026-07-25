@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -35,13 +36,21 @@ type client struct {
 
 func (c *client) close() {
 	go c.closeOnce.Do(func() {
+		c.closed.Store(true)
 		// immediately queue to unregister so no more packets are routed
 		c.exchange.unregister <- c
 
 		c.ctxCancel()
 
-		// wait for writer to be done
-		<-c.writerDone
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+
+		select {
+		case <-c.writerDone:
+		case <-timer.C:
+			c.logger.Warn().Msg("timeout waiting for writer to close, closing connection")
+			break
+		}
 
 		if err := c.conn.Close(); err != nil {
 			c.logger.Warn().
@@ -54,6 +63,9 @@ func (c *client) close() {
 }
 
 func (c *client) write(pkt *pdpPacket) error {
+	if c.closed.Load() {
+		return ErrClientClosed
+	}
 	select {
 	case c.txQueue <- pkt:
 		return nil

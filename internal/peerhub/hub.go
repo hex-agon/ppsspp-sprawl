@@ -121,6 +121,7 @@ func (hub *PeerHub) houseKeeper() {
 				if _, ok := hub.listeningPeers[p.key]; ok {
 					delete(hub.listeningPeers, p.key)
 					listeningPeersCount.Dec()
+					p.logger.Info().Msg("[hub] unregistered listening peer")
 				}
 				hub.Unlock()
 			case peerTypeConnecting:
@@ -128,6 +129,7 @@ func (hub *PeerHub) houseKeeper() {
 				if _, ok := hub.connectedPeers[p.key]; ok {
 					delete(hub.connectedPeers, p.key)
 					connectedPeersCount.Dec()
+					p.logger.Info().Msg("[hub] unregistered connected peer")
 				}
 				hub.Unlock()
 			}
