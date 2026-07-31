@@ -80,21 +80,28 @@ type peer struct {
 
 func (p *peer) close() {
 	p.closeOnce.Do(func() {
-		// immediately queue to unregister so no more packets are routed
-		p.hub.unregister <- p
+		p.logger.Info().Msg("[hub] closing peer")
+		// best-effort to prevent more packets from being queued
 		p.closed.Store(true)
+		// causes the writer goroutine to exit
+		p.ctxCancel()
+		// queues the client to be unregistered so that packets become unroutable
+		p.hub.unregister <- p
 
+		// tell the other peer to close too
 		if p.peer != nil {
+			p.logger.Info().Msg("[hub] closing the other peer")
 			other := p.peer
 			p.peer = nil
 			other.peer = nil
 			other.close()
 		}
-		p.ctxCancel()
 
-		timer := time.NewTimer(5 * time.Second)
+		p.logger.Info().Msg("[hub] waiting for peer writer to finish")
+		timer := time.NewTimer(1 * time.Second)
 		defer timer.Stop()
 
+		// then we wait at most 1 second before closing the house down...
 		select {
 		case <-p.writerDone:
 		case <-timer.C:
@@ -106,7 +113,7 @@ func (p *peer) close() {
 			p.logger.Err(err).Msg("[hub] failed to close connection")
 		}
 
-		p.logger.Info().Msg("[hub] peer disconnected")
+		p.logger.Info().Msg("[hub] peer closed")
 	})
 }
 

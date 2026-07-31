@@ -10,7 +10,6 @@ type GroupStatus struct {
 
 type TitleStatus struct {
 	TitleID     string        `json:"title_id"`
-	TitleRegion string        `json:"title_region"`
 	Name        string        `json:"name"`
 	Groups      []GroupStatus `json:"groups"`
 	PlayerCount int           `json:"player_count,omitzero"`
@@ -41,9 +40,8 @@ func (srv *ctlServer) GetActiveTitles() []TitleStatus {
 			Groups:  make([]GroupStatus, 0, len(groups)),
 		}
 
-		if name, region, ok := titledb.GetTitle(tid); ok {
+		if name, ok := titledb.GetTitle(tid); ok {
 			titleStatus.Name = name
-			titleStatus.TitleRegion = region
 		} else {
 			titleStatus.Name = tid.String()
 		}

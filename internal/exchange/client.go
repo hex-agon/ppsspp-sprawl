@@ -35,16 +35,20 @@ type client struct {
 }
 
 func (c *client) close() {
-	go c.closeOnce.Do(func() {
+	c.closeOnce.Do(func() {
+		c.logger.Info().Msg("[exchange] closing client")
+		// best-effort to prevent more packets from being queued
 		c.closed.Store(true)
-		// immediately queue to unregister so no more packets are routed
+		// causes the writer goroutine to exit
+		c.ctxCancel()
+		// queues the client to be unregistered so that packets become unroutable
 		c.exchange.unregister <- c
 
-		c.ctxCancel()
-
-		timer := time.NewTimer(5 * time.Second)
+		c.logger.Info().Msg("[exchange] waiting for client writer to finish")
+		timer := time.NewTimer(1 * time.Second)
 		defer timer.Stop()
 
+		// then we wait at most 1 second before closing the house down...
 		select {
 		case <-c.writerDone:
 		case <-timer.C:
@@ -57,8 +61,7 @@ func (c *client) close() {
 				Err(err).
 				Msg("[exchange] failed to close connection")
 		}
-
-		c.logger.Info().Msg("[exchange] client disconnected")
+		c.logger.Info().Msg("[exchange] client closed")
 	})
 }
 

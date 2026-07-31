@@ -1,64 +1,117 @@
 package titledb
 
 import (
-	"database/sql"
+	"bytes"
 	"embed"
-	"errors"
+	"encoding/binary"
+	"sort"
+	"unsafe"
 
 	"github.com/rs/zerolog/log"
 	_ "modernc.org/sqlite"
-	"modernc.org/sqlite/vfs"
 )
 
-// Certain games released in different regions are protocol compatible with each other despite having different titleIds.
-
-//go:embed titledb.sqlite
+//go:embed titledb.bin
 var embedFS embed.FS
 
-type Title struct {
-	Name   string
-	Region string
+var (
+	dbData        []byte
+	entries       []titleEntry
+	strTableStart int
+)
+
+const (
+	dbHeaderSize        = 4
+	dbEntrySize         = 16
+	noCompatibleTitleId = 0xffff
+)
+
+type titleEntry struct {
+	// Do NOT modify the field order to not break memory alignment
+	NameOffset        uint32
+	CompatibleWithIdx uint16
+	NameLen           uint8
+	TitleId           TitleId
 }
 
-var db *sql.DB
+func (t *titleEntry) TitleName() string {
+	nameOffset := int(t.NameOffset)
+	nameLength := int(t.NameLen)
+
+	start := strTableStart + nameOffset
+	return string(dbData[start : start+nameLength])
+}
 
 func init() {
-	vfsName, _, err := vfs.New(embedFS)
+	var err error
+	dbData, err = embedFS.ReadFile("titledb.bin")
 
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create SQLite VFS")
+		log.Fatal().Err(err).Msg("failed to read embedded titledb.bin")
 	}
-	db, err = sql.Open("sqlite", "titledb.sqlite?vfs="+vfsName+"&mode=ro")
 
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to open titles database")
+	if len(dbData) < dbHeaderSize {
+		log.Fatal().Msg("invalid/corrupted titledb.bin")
+	}
+	entryCount := binary.LittleEndian.Uint32(dbData[:dbHeaderSize])
+
+	if entryCount == 0 {
+		entries = []titleEntry{}
+		return
+	}
+	entryTableSize := int(entryCount * dbEntrySize)
+
+	entries = unsafe.Slice(
+		(*titleEntry)(unsafe.Pointer(&dbData[dbHeaderSize])),
+		int(entryCount),
+	)
+	strTableStart = dbHeaderSize + entryTableSize
+
+	for i, entry := range entries {
+		compatIdx := int(entry.CompatibleWithIdx)
+
+		if compatIdx != 0xFFFF && compatIdx >= len(entries) {
+			log.Fatal().Msgf("titledb: entry %d points to an invalid compatible title index: %d", i, compatIdx)
+		}
+
+		if int(entry.NameOffset) > len(dbData)-strTableStart {
+			log.Fatal().Msgf("titledb: entry %d has invalid name offset: %d (out of range)", i, entry.NameOffset)
+		}
 	}
 }
 
-func GetTitle(tid TitleId) (name string, region string, found bool) {
-	err := db.QueryRow("SELECT name, region FROM title WHERE title_id = ?", tid.String()).Scan(&name, &region)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return name, region, false
-		}
-		log.Error().Err(err).Msg("Failed to query title")
-		return name, region, false
+func GetTitle(tid TitleId) (name string, found bool) {
+	entry, ok := findTitle(tid)
+	if !ok {
+		return "", false
 	}
-	return name, region, true
+	return entry.TitleName(), true
 }
 
 func CompatibleTitleId(tid TitleId) (TitleId, bool) {
-	var parentId *string
-	err := db.QueryRow("SELECT compatible_with FROM title WHERE title_id = ?", tid.String()).Scan(&parentId)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return tid, false
-		}
-		log.Error().Err(err).Msg("Failed to query compatible title")
+	entry, ok := findTitle(tid)
+	if !ok {
 		return tid, false
 	}
-	if parentId == nil {
+	compatibleIndex := entry.CompatibleWithIdx
+
+	if compatibleIndex == noCompatibleTitleId {
 		return tid, false
 	}
-	return NewTitleId(*parentId), true
+	return entries[compatibleIndex].TitleId, true
+}
+
+func findTitle(tid TitleId) (entry *titleEntry, ok bool) {
+	index := sort.Search(len(entries), func(index int) bool {
+		return bytes.Compare(entries[index].TitleId[:], tid[:]) >= 0
+	})
+	if index == len(entries) {
+		return nil, false
+	}
+	entry = &entries[index]
+
+	if !bytes.Equal(entry.TitleId[:], tid[:]) {
+		return nil, false
+	}
+	return entry, true
 }
