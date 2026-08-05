@@ -18,31 +18,41 @@ var ErrClientClosed = errors.New("client closed")
 var ErrClientTxQueueFull = errors.New("client tx queue full")
 
 type client struct {
-	exchange   *Exchange
-	conn       net.Conn
-	decoder    *decoder
-	encoder    *encoder
-	ctx        context.Context
-	ctxCancel  context.CancelFunc
-	closeOnce  sync.Once
-	closed     atomic.Bool
-	writerDone chan struct{}
-	txQueue    chan *pdpPacket
-	macAddr    pspnet.MacAddr
-	port       uint16
-	routingKey routingKey
-	logger     zerolog.Logger
+	exchange      *Exchange
+	conn          net.Conn
+	decoder       *decoder
+	encoder       *encoder
+	ctx           context.Context
+	ctxCancel     context.CancelFunc
+	closeOnce     sync.Once
+	closeConnOnce sync.Once
+	closed        atomic.Bool
+	writerDone    chan struct{}
+	txQueue       chan *pdpPacket
+	macAddr       pspnet.MacAddr
+	port          uint16
+	routingKey    routingKey
+	logger        zerolog.Logger
 }
 
 func (c *client) close() {
 	c.closeOnce.Do(func() {
 		c.logger.Info().Msg("[exchange] closing client")
-		// best-effort to prevent more packets from being queued
+		c.closed.Store(true)
+		c.exchange.unregister <- c
+
+	})
+}
+
+// closeConn cleanly terminates the client connection by stopping background operations and releasing associated resources.
+// Calling this may block the calling goroutine.
+func (c *client) closeConn() {
+	c.closeConnOnce.Do(func() {
+		c.logger.Info().Msg("[exchange] closing client connection")
+		// In case of duplicate connections, housekeeper calls this directly
 		c.closed.Store(true)
 		// causes the writer goroutine to exit
 		c.ctxCancel()
-		// queues the client to be unregistered so that packets become unroutable
-		c.exchange.unregister <- c
 
 		c.logger.Info().Msg("[exchange] waiting for client writer to finish")
 		timer := time.NewTimer(1 * time.Second)

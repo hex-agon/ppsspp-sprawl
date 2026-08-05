@@ -60,60 +60,59 @@ func (key *peerKey) String() string {
 }
 
 type peer struct {
-	hub        *PeerHub
-	conn       net.Conn
-	ctx        context.Context
-	ctxCancel  context.CancelFunc
-	closeOnce  sync.Once
-	closed     atomic.Bool
-	writerDone chan struct{}
-	txQueue    chan p2pOutboundPacket
-	macAddr    pspnet.MacAddr
-	port       uint16
-	key        peerKey
-	peerType   peerType
-	peer       *peer
-	logger     zerolog.Logger
-	encoder    *encoder
-	decoder    *decoder
+	hub           *PeerHub
+	conn          net.Conn
+	ctx           context.Context
+	ctxCancel     context.CancelFunc
+	closeOnce     sync.Once
+	closeConnOnce sync.Once
+	closed        atomic.Bool
+	writerDone    chan struct{}
+	txQueue       chan p2pOutboundPacket
+	macAddr       pspnet.MacAddr
+	port          uint16
+	key           peerKey
+	peerType      peerType
+	peer          atomic.Pointer[peer]
+	logger        zerolog.Logger
+	encoder       *encoder
+	decoder       *decoder
 }
 
 func (p *peer) close() {
 	p.closeOnce.Do(func() {
 		p.logger.Info().Msg("[hub] closing peer")
-		// best-effort to prevent more packets from being queued
 		p.closed.Store(true)
-		// causes the writer goroutine to exit
-		p.ctxCancel()
-		// queues the client to be unregistered so that packets become unroutable
 		p.hub.unregister <- p
 
 		// tell the other peer to close too
-		if p.peer != nil {
+		if other := p.peer.Swap(nil); other != nil {
 			p.logger.Info().Msg("[hub] closing the other peer")
-			other := p.peer
-			p.peer = nil
-			other.peer = nil
+			other.peer.CompareAndSwap(p, nil)
 			other.close()
 		}
+	})
+}
+func (p *peer) closeConn() {
+	p.closeConnOnce.Do(func() {
+		p.logger.Info().Msg("[hub] closing peer connection")
+		p.closed.Store(true)
+		p.ctxCancel()
 
 		p.logger.Info().Msg("[hub] waiting for peer writer to finish")
 		timer := time.NewTimer(1 * time.Second)
 		defer timer.Stop()
 
-		// then we wait at most 1 second before closing the house down...
 		select {
 		case <-p.writerDone:
 		case <-timer.C:
 			p.logger.Warn().Msg("timeout waiting for writer to close, closing connection")
 			break
 		}
-
 		if err := p.conn.Close(); err != nil {
 			p.logger.Err(err).Msg("[hub] failed to close connection")
 		}
-
-		p.logger.Info().Msg("[hub] peer closed")
+		p.logger.Info().Msg("[hub] peer connection closed")
 	})
 }
 
@@ -146,13 +145,14 @@ func (p *peer) reader() {
 			return
 		}
 
-		if p.peer == nil {
+		other := p.peer.Load()
+		if other == nil {
 			p.logger.Warn().Msg("[hub] reader: peer has no peer, discarding packet")
 			pkt.release()
 			continue
 		}
 
-		if err := p.peer.write(pkt); err != nil {
+		if err := other.write(pkt); err != nil {
 			if !errors.Is(err, ErrPeerDisconnected) {
 				p.logger.Warn().Err(err).Msg("[hub] failed to write packet to peer")
 			}

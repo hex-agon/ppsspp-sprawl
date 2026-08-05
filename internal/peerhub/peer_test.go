@@ -3,6 +3,7 @@ package peerhub
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"sprawl/internal/pspnet"
@@ -13,6 +14,60 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 )
+
+const peerShutdownTimeout = 1 * time.Second
+const peerShutdownPollInterval = 10 * time.Millisecond
+
+func requirePeerUnregistered(t *testing.T, hub *PeerHub, p *peer) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		switch p.peerType {
+		case peerTypeListening:
+			return hub.findListeningPeer(p.key) == nil
+		case peerTypeConnecting:
+			return hub.findConnectedPeer(p.key) == nil
+		default:
+			return false
+		}
+	}, peerShutdownTimeout, peerShutdownPollInterval, "Peer should be unregistered")
+}
+
+func requirePeerWriterDone(t *testing.T, p *peer) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-p.writerDone:
+			return true
+		default:
+			return false
+		}
+	}, peerShutdownTimeout, peerShutdownPollInterval, "Peer writer should be done")
+}
+
+func requirePeerEOF(t *testing.T, conn net.Conn) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		if err := conn.SetReadDeadline(time.Now().Add(peerShutdownPollInterval)); err != nil {
+			_, readErr := conn.Read(make([]byte, 1))
+			return errors.Is(readErr, io.EOF)
+		}
+
+		_, err := conn.Read(make([]byte, 1))
+		return errors.Is(err, io.EOF)
+	}, peerShutdownTimeout, peerShutdownPollInterval, "Peer connection should be closed")
+}
+
+func requirePeerShutdown(t *testing.T, hub *PeerHub, p *peer, remoteConn net.Conn) {
+	t.Helper()
+
+	p.close()
+	requirePeerUnregistered(t, hub, p)
+	requirePeerWriterDone(t, p)
+	requirePeerEOF(t, remoteConn)
+}
 
 func TestPeerKey(t *testing.T) {
 	mac := pspnet.MustParseMacAddr("00:01:02:03:04:05")
@@ -58,8 +113,8 @@ func TestPeer(t *testing.T) {
 
 		peerB := hub.registerPeer(clientConnB, macB, 1002, peerTypeConnecting)
 
-		peerA.peer = peerB
-		peerB.peer = peerA
+		peerA.peer.Store(peerB)
+		peerB.peer.Store(peerA)
 
 		payload := []byte("hello from A")
 		packet := make([]byte, 4+len(payload))
@@ -76,6 +131,10 @@ func TestPeer(t *testing.T) {
 
 		assert.Equal(t, uint32(len(payload)), binary.LittleEndian.Uint32(received[0:4]))
 		assert.Equal(t, payload, received[4:])
+
+		requirePeerShutdown(t, hub, peerA, srvConnA)
+		requirePeerShutdown(t, hub, peerB, srvConnB)
+		cancel()
 	})
 
 	t.Run("CloseLinkedPeers", func(t *testing.T) {
@@ -95,22 +154,25 @@ func TestPeer(t *testing.T) {
 		defer func() { _ = clientConnB.Close() }()
 
 		peerA := hub.registerPeer(clientConnA, macA, 1001, peerTypeConnecting)
-
 		peerB := hub.registerPeer(clientConnB, macB, 1002, peerTypeConnecting)
 
-		peerA.peer = peerB
-		peerB.peer = peerA
+		peerA.peer.Store(peerB)
+		peerB.peer.Store(peerA)
 
-		done := make(chan struct{})
-		go func() {
-			peerA.close()
-			close(done)
-		}()
+		peerA.close()
 
-		select {
-		case <-done:
-		case <-time.After(2 * time.Second):
-			t.Fatal("peerA.close() timed out - likely infinite recursion or deadlock")
-		}
+		assert.Eventually(t, func() bool {
+			return hub.findConnectedPeer(peerA.key) == nil
+		}, 1*time.Second, 50*time.Millisecond)
+
+		assert.Eventually(t, func() bool {
+			return hub.findConnectedPeer(peerB.key) == nil
+		}, 1*time.Second, 50*time.Millisecond)
+
+		requirePeerWriterDone(t, peerA)
+		requirePeerWriterDone(t, peerB)
+		requirePeerEOF(t, srvConnA)
+		requirePeerEOF(t, srvConnB)
+		cancel()
 	})
 }

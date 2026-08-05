@@ -48,7 +48,7 @@ func NewExchange(ctx context.Context) *Exchange {
 		ctx:        ctx,
 		clients:    make(map[routingKey]*client),
 		register:   make(chan *client, 32),
-		unregister: make(chan *client, 32),
+		unregister: make(chan *client, 128),
 	}
 	go ex.houseKeeper()
 	return ex
@@ -64,11 +64,17 @@ func (ex *Exchange) houseKeeper() {
 	for {
 		select {
 		case <-ex.ctx.Done():
+			ex.Lock()
+			for key, cli := range ex.clients {
+				delete(ex.clients, key)
+				go cli.closeConn()
+			}
+			ex.Unlock()
 			return
 		case c := <-ex.register:
 			if c.routingKey == (routingKey{}) {
 				c.logger.Warn().Msg("[exchange] client has empty routing key")
-				c.close()
+				go c.closeConn()
 				break
 			}
 
@@ -76,7 +82,7 @@ func (ex *Exchange) houseKeeper() {
 			if _, ok := ex.clients[c.routingKey]; ok {
 				c.logger.Warn().Msg("[exchange] duplicate client registration attempt")
 
-				c.close()
+				go c.closeConn()
 				ex.Unlock()
 				break
 			}
@@ -91,6 +97,7 @@ func (ex *Exchange) houseKeeper() {
 				cli.logger.Info().Msg("[exchange] unregistered client")
 			}
 			ex.Unlock()
+			go cli.closeConn()
 		}
 	}
 }

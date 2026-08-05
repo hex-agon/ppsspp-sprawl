@@ -52,8 +52,9 @@ func (hub *PeerHub) GetPeers() (listening []PeerInfo, connected []PeerInfo) {
 			Port: p.port,
 			IP:   p.conn.RemoteAddr().String(),
 		}
-		if p.peer != nil {
-			info.ConnectedTo = formatMAC(p.peer.macAddr)
+		other := p.peer.Load()
+		if other != nil {
+			info.ConnectedTo = formatMAC(other.macAddr)
 		}
 		connected = append(connected, info)
 	}
@@ -91,6 +92,17 @@ func (hub *PeerHub) houseKeeper() {
 	for {
 		select {
 		case <-hub.ctx.Done():
+			hub.Lock()
+			for key, p := range hub.connectedPeers {
+				delete(hub.connectedPeers, key)
+				go p.closeConn()
+			}
+
+			for key, p := range hub.listeningPeers {
+				delete(hub.listeningPeers, key)
+				p.closeConn()
+			}
+			hub.Unlock()
 			return
 		case p := <-hub.registerListening:
 			hub.Lock()
@@ -124,6 +136,7 @@ func (hub *PeerHub) houseKeeper() {
 					p.logger.Info().Msg("[hub] unregistered listening peer")
 				}
 				hub.Unlock()
+				go p.closeConn()
 			case peerTypeConnecting:
 				hub.Lock()
 				if _, ok := hub.connectedPeers[p.key]; ok {
@@ -132,6 +145,7 @@ func (hub *PeerHub) houseKeeper() {
 					p.logger.Info().Msg("[hub] unregistered connected peer")
 				}
 				hub.Unlock()
+				go p.closeConn()
 			}
 		}
 	}
@@ -260,7 +274,7 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 		return
 	}
 
-	if targetPeer.peer != nil {
+	if targetPeer.peer.Load() != nil {
 		log.Warn().
 			Str("ip", conn.RemoteAddr().String()).
 			Str("src-key", srcPeerKey.String()).
@@ -270,8 +284,8 @@ func (hub *PeerHub) HandleAcceptingPeer(conn net.Conn, srcAddr pspnet.MacAddr, s
 		return
 	}
 	p := hub.registerPeer(conn, srcAddr, srcPort, peerTypeConnecting)
-	p.peer = targetPeer
-	targetPeer.peer = p
+	p.peer.Store(targetPeer)
+	targetPeer.peer.Store(p)
 
 	announceTargetPeer := &peerAnnouncePacket{
 		macAddr: targetAddr,
