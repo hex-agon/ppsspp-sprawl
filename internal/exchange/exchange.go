@@ -2,6 +2,7 @@ package exchange
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sprawl/internal/pspnet"
 	"sync"
@@ -139,7 +140,9 @@ func (ex *Exchange) routePacket(targetMacAddr pspnet.MacAddr, targetPort uint16,
 
 	if c := ex.findClient(key); c != nil {
 		if err := c.write(pkt); err != nil {
-			c.logger.Warn().Err(err).Msg("[exchange] failed to write packet")
+			if !errors.Is(err, ErrClientClosed) {
+				c.logger.Warn().Err(err).Msg("[exchange] failed to write packet")
+			}
 			pkt.release()
 			c.close()
 		}
